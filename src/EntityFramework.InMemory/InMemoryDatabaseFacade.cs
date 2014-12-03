@@ -4,7 +4,6 @@
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
-using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.Logging;
 
 namespace Microsoft.Data.Entity.InMemory
@@ -12,12 +11,17 @@ namespace Microsoft.Data.Entity.InMemory
     public class InMemoryDatabaseFacade : Database
     {
         public InMemoryDatabaseFacade(
-            [NotNull] LazyRef<IModel> model,
+            [NotNull] DbContextService<IModel> model,
             [NotNull] InMemoryDataStoreCreator dataStoreCreator,
             [NotNull] InMemoryConnection connection,
             [NotNull] ILoggerFactory loggerFactory)
             : base(model, dataStoreCreator, connection, loggerFactory)
         {
+        }
+
+        public new virtual InMemoryConnection Connection
+        {
+            get { return (InMemoryConnection)base.Connection; }
         }
     }
 }

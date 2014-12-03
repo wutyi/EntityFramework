@@ -8,10 +8,10 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Migrations.Model;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Relational.Metadata;
+using Microsoft.Data.Entity.Relational.Tests;
 using Microsoft.Data.Entity.Utilities;
 using Xunit;
-using Sequence = Microsoft.Data.Entity.Relational.Metadata.Sequence;
 
 namespace Microsoft.Data.Entity.Commands.Tests.Migrations
 {
@@ -126,22 +126,30 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         }
 
         [Fact]
-        public void Generate_when_create_table_operation_without_primary_key()
+        public void Generate_when_create_table_operation()
         {
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        new Column("Foo", typeof(int)) { IsNullable = false, DefaultValue = 5 },
-                        new Column("Bar", typeof(int))
-                    });
-            var operation = new CreateTableOperation(table);
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
+                {
+                    b.Property<byte>("P1").ForRelational().DefaultValue((byte)BikeType.Mountain);
+                    b.Property<int>("P2").ForRelational().DefaultValue(5);
+                    b.Property<int?>("P3");
+                    b.Property<int>("P4").StoreComputed().ForRelational().DefaultExpression("P2 + P3");
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
-                @"CreateTable(""dbo.MyTable"",
+@"CreateTable(""dbo.MyTable"",
     c => new
         {
-            Foo = c.Int(nullable: false, defaultValue: 5),
-            Bar = c.Int()
+            P1 = c.Byte(nullable: false, defaultValue: 1),
+            P2 = c.Int(nullable: false, defaultValue: 5),
+            P3 = c.Int(),
+            P4 = c.Int(nullable: false, defaultSql: ""P2 + P3"", computed: true)
         })",
                 CSharpMigrationCodeGenerator.Generate(operation));
 
@@ -151,17 +159,18 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         [Fact]
         public void Generate_when_create_table_operation_with_one_primary_key_columns()
         {
-            Column foo;
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", typeof(int)) { IsNullable = false, DefaultValue = 5 },
-                        new Column("Bar", typeof(int))
-                    })
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo })
-                };
-            var operation = new CreateTableOperation(table);
+                    b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                    b.Property<int?>("Bar");
+                    b.Key("Foo").ForRelational().Name("MyPK");
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CreateTable(""dbo.MyTable"",
@@ -179,17 +188,18 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         [Fact]
         public void Generate_when_create_table_operation_with_multiple_primary_key_columns()
         {
-            Column foo, bar;
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", typeof(int)) { IsNullable = false, DefaultValue = 5 },
-                        bar = new Column("Bar", typeof(int))
-                    })
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo, bar })
-                };
-            var operation = new CreateTableOperation(table);
+                    b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                    b.Property<int?>("Bar");
+                    b.Key("Foo", "Bar").ForRelational().Name("MyPK");
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
+
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CreateTable(""dbo.MyTable"",
@@ -205,45 +215,24 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         }
 
         [Fact]
-        public void Generate_when_create_table_operation_with_column_having_enum_clr_type()
-        {
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        new Column("Foo", typeof(BikeType)) { IsNullable = false, DefaultValue = BikeType.Mountain }
-                    });
-            var operation = new CreateTableOperation(table);
-
-            Assert.Equal(
-                @"CreateTable(""dbo.MyTable"",
-    c => new
-        {
-            Foo = c.Byte(nullable: false, defaultValue: 1)
-        })",
-                CSharpMigrationCodeGenerator.Generate(operation));
-
-            GenerateAndValidateCode(operation);
-        }
-
-        [Fact]
         public void Generate_when_create_table_with_unique_constraints()
         {
-            Column foo, bar, c1, c2;
-            var table = new Table("dbo.MyTable",
-                new[]
-                    {
-                        foo = new Column("Foo", typeof(int)) { IsNullable = false, DefaultValue = 5 },
-                        bar = new Column("Bar", typeof(int)),
-                        c1 = new Column("C1", typeof(string)),
-                        c2 = new Column("C2", typeof(string))
-                    })
+            var model = new Model();
+            var modelBuilder = new BasicModelBuilder(model);
+            modelBuilder.Entity("E",
+                b =>
                 {
-                    PrimaryKey = new PrimaryKey("MyPK", new[] { foo })
-                };
-            table.AddUniqueConstraint(new UniqueConstraint("MyUC0", new[] { c1 }));
-            table.AddUniqueConstraint(new UniqueConstraint("MyUC1", new[] { bar, c2 }));
+                    b.Property<int>("Foo").ForRelational().DefaultValue(5);
+                    var bar = b.Property<int?>("Bar").Metadata;
+                    var c1 = b.Property<string>("C1").Metadata;
+                    var c2 = b.Property<string>("C2").Metadata;
+                    b.Key("Foo").ForRelational().Name("MyPK");
+                    b.Metadata.AddKey(c1).Relational().Name = "MyUC0";
+                    b.Metadata.AddKey(new[] { bar, c2 }).Relational().Name = "MyUC1";
+                    b.ForRelational().Table("MyTable", "dbo");
+                });
 
-            var operation = new CreateTableOperation(table);
+            var operation = OperationFactory().CreateTableOperation(model.GetEntityType("E"));
 
             Assert.Equal(
                 @"CreateTable(""dbo.MyTable"",
@@ -312,6 +301,19 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         }
 
         [Fact]
+        public void Generate_when_add_column_operation_with_computed_column()
+        {
+            var column = new Column("C3", typeof(int)) { DefaultSql = "C1 + C2", IsComputed = true };
+            var operation = new AddColumnOperation("dbo.MyTable", column);
+
+            Assert.Equal(
+                @"AddColumn(""dbo.MyTable"", ""C3"", c => c.Int(defaultSql: ""C1 + C2"", computed: true))",
+                CSharpMigrationCodeGenerator.Generate(operation));
+
+            GenerateAndValidateCode(operation);
+        }
+
+        [Fact]
         public void Generate_when_add_column_operation_with_enum_clr_type()
         {
             var column = new Column("Foo", typeof(BikeType)) { IsNullable = false, DefaultValue = BikeType.Mountain };
@@ -367,7 +369,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
             var operation = new AddDefaultConstraintOperation("dbo.MyTable", "Foo", 5, null);
 
             Assert.Equal(
-                @"AddDefaultConstraint(""dbo.MyTable"", ""Foo"", DefaultConstraint.Value(5))",
+                @"AddDefaultValue(""dbo.MyTable"", ""Foo"", 5)",
                 CSharpMigrationCodeGenerator.Generate(operation));
         }
 
@@ -377,7 +379,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
             var operation = new AddDefaultConstraintOperation("dbo.MyTable", "Foo", null, "GETDATE()");
 
             Assert.Equal(
-                @"AddDefaultConstraint(""dbo.MyTable"", ""Foo"", DefaultConstraint.Sql(""GETDATE()""))",
+                @"AddDefaultExpression(""dbo.MyTable"", ""Foo"", ""GETDATE()"")",
                 CSharpMigrationCodeGenerator.Generate(operation));
 
             GenerateAndValidateCode(operation);
@@ -450,7 +452,13 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
                 "dbo.MyTable2", new[] { "Foo2", "Bar2" }, cascadeDelete: false);
 
             Assert.Equal(
-                @"AddForeignKey(""dbo.MyTable"", ""MyFK"", new[] { ""Foo"", ""Bar"" }, ""dbo.MyTable2"", new[] { ""Foo2"", ""Bar2"" }, cascadeDelete: false)",
+@"AddForeignKey(
+    ""dbo.MyTable"",
+    ""MyFK"",
+    new[] { ""Foo"", ""Bar"" },
+    ""dbo.MyTable2"",
+    new[] { ""Foo2"", ""Bar2"" },
+    cascadeDelete: false)",
                 CSharpMigrationCodeGenerator.Generate(operation));
 
             GenerateAndValidateCode(operation);
@@ -610,7 +618,7 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
             Assert.Equal(
                 @"using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Builders;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 using System;
 
 namespace MyNamespace
@@ -702,6 +710,14 @@ namespace MyNamespace
                 stringBuilder.ToString());
         }
 
+        [Fact]
+        public void Language_returns_cs()
+        {
+            var generator = new CSharpMigrationCodeGenerator(new CSharpModelCodeGenerator());
+
+            Assert.Equal(".cs", generator.Language);
+        }
+
         private enum BikeType : byte
         {
             Road,
@@ -770,6 +786,10 @@ namespace MyNamespace
             Assert.Equal(migrationMetadataSource, migrationMetadataBuilder.ToString());
         }
 
+        private static MigrationOperationFactory OperationFactory()
+        {
+            return new MigrationOperationFactory(RelationalTestHelpers.ExtensionProvider());
+        }
         #endregion
     }
 }

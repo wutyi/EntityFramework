@@ -7,11 +7,11 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
-using Microsoft.Data.Entity.Relational.Model;
-using Microsoft.Data.Entity.Utilities;
+using Microsoft.Data.Entity.Relational.Metadata;
 
 namespace Microsoft.Data.Entity.Migrations
 {
@@ -26,14 +26,38 @@ namespace Microsoft.Data.Entity.Migrations
         internal const string DateTimeFormat = "yyyy-MM-ddTHH:mm:ss.fffK";
         internal const string DateTimeOffsetFormat = "yyyy-MM-ddTHH:mm:ss.fffzzz";
 
+        private readonly IRelationalMetadataExtensionProvider _extensionProvider;
         private readonly RelationalTypeMapper _typeMapper;
-        private DatabaseModel _database;
+        private IModel _targetModel;
 
-        protected MigrationOperationSqlGenerator([NotNull] RelationalTypeMapper typeMapper)
+        /// <summary>
+        ///     This constructor is intended only for use when creating test doubles that will override members
+        ///     with mocked or faked behavior. Use of this constructor for other purposes may result in unexpected
+        ///     behavior including but not limited to throwing <see cref="NullReferenceException" />.
+        /// </summary>
+        protected MigrationOperationSqlGenerator()
         {
+        }
+
+        protected MigrationOperationSqlGenerator(
+            [NotNull] IRelationalMetadataExtensionProvider extensionProvider,
+            [NotNull] RelationalTypeMapper typeMapper)
+        {
+            Check.NotNull(extensionProvider, "extensionProvider");
             Check.NotNull(typeMapper, "typeMapper");
 
+            _extensionProvider = extensionProvider;
             _typeMapper = typeMapper;
+        }
+
+        public virtual IRelationalMetadataExtensionProvider ExtensionProvider
+        {
+            get { return _extensionProvider; }
+        }
+
+        protected virtual RelationalNameBuilder NameBuilder
+        {
+            get { return ExtensionProvider.NameBuilder; }
         }
 
         public virtual RelationalTypeMapper TypeMapper
@@ -41,71 +65,84 @@ namespace Microsoft.Data.Entity.Migrations
             get { return _typeMapper; }
         }
 
-        public virtual DatabaseModel Database
+        public virtual IModel TargetModel
         {
-            get { return _database; }
+            get { return _targetModel; }
+            [param: NotNull] set { _targetModel = Check.NotNull(value, "value"); }
+        }
 
-            [param: NotNull]
-            set
+        public virtual string StatementSeparator
+        {
+            get
             {
-                Check.NotNull(value, "value");
-
-                _database = value;
+                return ";";
             }
         }
 
-        public virtual IEnumerable<SqlStatement> Generate([NotNull] IEnumerable<MigrationOperation> migrationOperations)
+        public virtual IEnumerable<SqlBatch> Generate([NotNull] IEnumerable<MigrationOperation> migrationOperations)
         {
             Check.NotNull(migrationOperations, "migrationOperations");
 
-            return migrationOperations.Select(Generate);
+            var batchBuilder = new SqlBatchBuilder();
+            var migrationOperationsList = migrationOperations.ToList();
+            for (var i = 0; i < migrationOperationsList.Count; i++)
+            {
+                if (i > 0)
+                {
+                    batchBuilder.AppendLine(StatementSeparator);
+                }
+
+                migrationOperationsList[i].GenerateSql(this, batchBuilder);
+            }
+
+            batchBuilder.EndBatch();
+            
+            return batchBuilder.SqlBatches;
         }
 
-        public virtual SqlStatement Generate([NotNull] MigrationOperation operation)
+        public virtual IEnumerable<SqlBatch> Generate([NotNull] MigrationOperation operation)
         {
             Check.NotNull(operation, "operation");
 
-            var builder = new IndentedStringBuilder();
+            var batchBuilder = new SqlBatchBuilder();
+            operation.GenerateSql(this, batchBuilder);
+            batchBuilder.EndBatch();
 
-            operation.GenerateSql(this, builder);
-
-            var sqlOperation = operation as SqlOperation;
-            var suppressTransaction = sqlOperation != null && sqlOperation.SuppressTransaction;
-
-            // TODO: Should we support implementations of Generate that output more than one SQL statement?
-            return new SqlStatement(builder.ToString()) { SuppressTransaction = suppressTransaction };
+            return batchBuilder.SqlBatches;
         }
 
-        public virtual void Generate([NotNull] CreateDatabaseOperation createDatabaseOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] CreateDatabaseOperation createDatabaseOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(createDatabaseOperation, "createDatabaseOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("CREATE DATABASE ")
                 .Append(DelimitIdentifier(createDatabaseOperation.DatabaseName));
         }
 
-        public virtual void Generate([NotNull] DropDatabaseOperation dropDatabaseOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropDatabaseOperation dropDatabaseOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropDatabaseOperation, "dropDatabaseOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("DROP DATABASE ")
                 .Append(DelimitIdentifier(dropDatabaseOperation.DatabaseName));
         }
 
-        public virtual void Generate([NotNull] CreateSequenceOperation createSequenceOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] CreateSequenceOperation createSequenceOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(createSequenceOperation, "createSequenceOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
             var dataType = _typeMapper.GetTypeMapping(
                 null, createSequenceOperation.SequenceName, createSequenceOperation.Type, 
                 isKey: false, isConcurrencyToken: false).StoreTypeName;
 
-            stringBuilder
+            EnsureSchema(createSequenceOperation.SequenceName.Schema, batchBuilder);
+
+            batchBuilder
                 .Append("CREATE SEQUENCE ")
                 .Append(DelimitIdentifier(createSequenceOperation.SequenceName))
                 .Append(" AS ")
@@ -116,168 +153,158 @@ namespace Microsoft.Data.Entity.Migrations
                 .Append(createSequenceOperation.IncrementBy);
         }
 
-        public virtual void Generate([NotNull] DropSequenceOperation dropSequenceOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropSequenceOperation dropSequenceOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropSequenceOperation, "dropSequenceOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("DROP SEQUENCE ")
                 .Append(DelimitIdentifier(dropSequenceOperation.SequenceName));
         }
 
-        public abstract void Generate([NotNull] RenameSequenceOperation renameSequenceOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] RenameSequenceOperation renameSequenceOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public abstract void Generate([NotNull] MoveSequenceOperation moveSequenceOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] MoveSequenceOperation moveSequenceOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public virtual void Generate([NotNull] AlterSequenceOperation alterSequenceOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AlterSequenceOperation alterSequenceOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(alterSequenceOperation, "alterSequenceOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER SEQUENCE ")
                 .Append(DelimitIdentifier(alterSequenceOperation.SequenceName))
                 .Append(" INCREMENT BY ")
                 .Append(alterSequenceOperation.NewIncrementBy);
         }
 
-        public virtual void Generate([NotNull] CreateTableOperation createTableOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] CreateTableOperation createTableOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(createTableOperation, "createTableOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            var table = Database.GetTable(createTableOperation.TableName);
+            EnsureSchema(createTableOperation.TableName.Schema, batchBuilder);
 
-            stringBuilder
+            batchBuilder
                 .Append("CREATE TABLE ")
-                .Append(DelimitIdentifier(table.Name))
+                .Append(DelimitIdentifier(createTableOperation.TableName))
                 .AppendLine(" (");
 
-            using (stringBuilder.Indent())
+            using (batchBuilder.Indent())
             {
-                GenerateColumns(table, stringBuilder);
+                GenerateColumns(createTableOperation, batchBuilder);
 
-                GenerateTableConstraints(table, stringBuilder);
+                GenerateTableConstraints(createTableOperation, batchBuilder);
             }
 
-            stringBuilder
+            batchBuilder
                 .AppendLine()
                 .Append(")");
         }
 
-        protected virtual void GenerateTableConstraints([NotNull] Table table, [NotNull] IndentedStringBuilder stringBuilder)
+        protected virtual void GenerateTableConstraints([NotNull] CreateTableOperation createTableOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
-            Check.NotNull(table, "table");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(createTableOperation, "createTableOperation");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            var primaryKey = table.PrimaryKey;
+            var addPrimaryKeyOperation = createTableOperation.PrimaryKey;
 
-            if (primaryKey != null)
+            if (addPrimaryKeyOperation != null)
             {
-                stringBuilder.AppendLine(",");
+                batchBuilder.AppendLine(",");
 
-                GeneratePrimaryKey(
-                    new AddPrimaryKeyOperation(
-                        table.Name,
-                        primaryKey.Name,
-                        primaryKey.Columns.Select(c => c.Name).ToArray(),
-                        primaryKey.IsClustered),
-                    stringBuilder);
+                GeneratePrimaryKey(addPrimaryKeyOperation, batchBuilder);
             }
 
-            foreach (var uniqueConstraint in table.UniqueConstraints)
+            foreach (var addUniqueConstraintOperation in createTableOperation.UniqueConstraints)
             {
-                stringBuilder.AppendLine(",");
+                batchBuilder.AppendLine(",");
 
-                GenerateUniqueConstraint(
-                    new AddUniqueConstraintOperation(
-                        uniqueConstraint.Table.Name,
-                        uniqueConstraint.Name,
-                        uniqueConstraint.Columns.Select(c => c.Name).ToArray()),
-                    stringBuilder);
+                GenerateUniqueConstraint(addUniqueConstraintOperation, batchBuilder);
             }
         }
 
-        public virtual void Generate([NotNull] DropTableOperation dropTableOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropTableOperation dropTableOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropTableOperation, "dropTableOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("DROP TABLE ")
                 .Append(DelimitIdentifier(dropTableOperation.TableName));
         }
 
-        public abstract void Generate([NotNull] RenameTableOperation renameTableOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] RenameTableOperation renameTableOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public abstract void Generate([NotNull] MoveTableOperation moveTableOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] MoveTableOperation moveTableOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public virtual void Generate([NotNull] AddColumnOperation addColumnOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AddColumnOperation addColumnOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(addColumnOperation, "addColumnOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(addColumnOperation.TableName))
                 .Append(" ADD ");
 
-            var table = Database.GetTable(addColumnOperation.TableName);
-            GenerateColumn(table, addColumnOperation.Column, stringBuilder);
+            GenerateColumn(addColumnOperation.TableName, addColumnOperation.Column, batchBuilder);
         }
 
-        public virtual void Generate([NotNull] DropColumnOperation dropColumnOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropColumnOperation dropColumnOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropColumnOperation, "dropColumnOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(dropColumnOperation.TableName))
                 .Append(" DROP COLUMN ")
                 .Append(DelimitIdentifier(dropColumnOperation.ColumnName));
         }
 
-        public virtual void Generate([NotNull] AlterColumnOperation alterColumnOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AlterColumnOperation alterColumnOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(alterColumnOperation, "alterColumnOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            var table = Database.GetTable(alterColumnOperation.TableName);
             var newColumn = alterColumnOperation.NewColumn;
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(alterColumnOperation.TableName))
                 .Append(" ALTER COLUMN ")
                 .Append(DelimitIdentifier(newColumn.Name))
-                .Append(" ")
-                .Append(GenerateDataType(table, newColumn))
+                .Append(" ");
+
+            GenerateColumnType(alterColumnOperation.TableName, newColumn, batchBuilder);
+
+            batchBuilder
                 .Append(newColumn.IsNullable ? " NULL" : " NOT NULL");
         }
 
-        public virtual void Generate([NotNull] AddDefaultConstraintOperation addDefaultConstraintOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AddDefaultConstraintOperation addDefaultConstraintOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(addDefaultConstraintOperation, "addDefaultConstraintOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(addDefaultConstraintOperation.TableName))
                 .Append(" ALTER COLUMN ")
                 .Append(DelimitIdentifier(addDefaultConstraintOperation.ColumnName))
                 .Append(" SET DEFAULT ");
 
-            stringBuilder.Append(addDefaultConstraintOperation.DefaultSql ?? GenerateLiteral((dynamic)addDefaultConstraintOperation.DefaultValue));
+            batchBuilder.Append(addDefaultConstraintOperation.DefaultSql ?? GenerateLiteral((dynamic)addDefaultConstraintOperation.DefaultValue));
         }
 
-        public virtual void Generate([NotNull] DropDefaultConstraintOperation dropDefaultConstraintOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropDefaultConstraintOperation dropDefaultConstraintOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropDefaultConstraintOperation, "dropDefaultConstraintOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(dropDefaultConstraintOperation.TableName))
                 .Append(" ALTER COLUMN ")
@@ -285,102 +312,102 @@ namespace Microsoft.Data.Entity.Migrations
                 .Append(" DROP DEFAULT");
         }
 
-        public abstract void Generate([NotNull] RenameColumnOperation renameColumnOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] RenameColumnOperation renameColumnOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public virtual void Generate([NotNull] AddPrimaryKeyOperation addPrimaryKeyOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AddPrimaryKeyOperation addPrimaryKeyOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(addPrimaryKeyOperation, "addPrimaryKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(addPrimaryKeyOperation.TableName))
                 .Append(" ADD ");
 
-            GeneratePrimaryKey(addPrimaryKeyOperation, stringBuilder);
+            GeneratePrimaryKey(addPrimaryKeyOperation, batchBuilder);
         }
 
-        public virtual void Generate([NotNull] DropPrimaryKeyOperation dropPrimaryKeyOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropPrimaryKeyOperation dropPrimaryKeyOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropPrimaryKeyOperation, "dropPrimaryKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(dropPrimaryKeyOperation.TableName))
                 .Append(" DROP CONSTRAINT ")
                 .Append(DelimitIdentifier(dropPrimaryKeyOperation.PrimaryKeyName));
         }
 
-        public virtual void Generate([NotNull] AddUniqueConstraintOperation addUniqueConstraintOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AddUniqueConstraintOperation addUniqueConstraintOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(addUniqueConstraintOperation, "addUniqueConstraintOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(addUniqueConstraintOperation.TableName))
                 .Append(" ADD ");
 
-            GenerateUniqueConstraint(addUniqueConstraintOperation, stringBuilder);
+            GenerateUniqueConstraint(addUniqueConstraintOperation, batchBuilder);
         }
 
-        public virtual void Generate([NotNull] DropUniqueConstraintOperation dropUniqueConstraintOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropUniqueConstraintOperation dropUniqueConstraintOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropUniqueConstraintOperation, "dropUniqueConstraintOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(dropUniqueConstraintOperation.TableName))
                 .Append(" DROP CONSTRAINT ")
                 .Append(DelimitIdentifier(dropUniqueConstraintOperation.UniqueConstraintName));
         }
 
-        public virtual void Generate([NotNull] AddForeignKeyOperation addForeignKeyOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] AddForeignKeyOperation addForeignKeyOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(addForeignKeyOperation, "addForeignKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(addForeignKeyOperation.TableName))
                 .Append(" ADD ");
 
-            GenerateForeignKey(addForeignKeyOperation, stringBuilder);
+            GenerateForeignKey(addForeignKeyOperation, batchBuilder);
         }
 
-        public virtual void Generate([NotNull] DropForeignKeyOperation dropForeignKeyOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropForeignKeyOperation dropForeignKeyOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropForeignKeyOperation, "dropForeignKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("ALTER TABLE ")
                 .Append(DelimitIdentifier(dropForeignKeyOperation.TableName))
                 .Append(" DROP CONSTRAINT ")
                 .Append(DelimitIdentifier(dropForeignKeyOperation.ForeignKeyName));
         }
 
-        public virtual void Generate([NotNull] CreateIndexOperation createIndexOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] CreateIndexOperation createIndexOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(createIndexOperation, "createIndexOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder.Append("CREATE");
+            batchBuilder.Append("CREATE");
 
             if (createIndexOperation.IsUnique)
             {
-                stringBuilder.Append(" UNIQUE");
+                batchBuilder.Append(" UNIQUE");
             }
 
             // TODO: Move to SqlServer
             if (createIndexOperation.IsClustered)
             {
-                stringBuilder.Append(" CLUSTERED");
+                batchBuilder.Append(" CLUSTERED");
             }
 
-            stringBuilder
+            batchBuilder
                 .Append(" INDEX ")
                 .Append(DelimitIdentifier(createIndexOperation.IndexName))
                 .Append(" ON ")
@@ -390,33 +417,33 @@ namespace Microsoft.Data.Entity.Migrations
                 .Append(")");
         }
 
-        public virtual void Generate([NotNull] DropIndexOperation dropIndexOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] DropIndexOperation dropIndexOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(dropIndexOperation, "dropIndexOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("DROP INDEX ")
                 .Append(DelimitIdentifier(dropIndexOperation.IndexName));
         }
 
-        public abstract void Generate([NotNull] RenameIndexOperation renameIndexOperation, [NotNull] IndentedStringBuilder stringBuilder);
+        public abstract void Generate([NotNull] RenameIndexOperation renameIndexOperation, [NotNull] SqlBatchBuilder batchBuilder);
 
-        public virtual void Generate([NotNull] CopyDataOperation copyDataOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] CopyDataOperation copyDataOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(copyDataOperation, "copyDataOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("INSERT INTO ")
                 .Append(DelimitIdentifier(copyDataOperation.TargetTableName))
                 .Append(" ( ")
                 .Append(copyDataOperation.TargetColumnNames.Select(DelimitIdentifier).Join())
                 .AppendLine(" )");
 
-            using (stringBuilder.Indent())
+            using (batchBuilder.Indent())
             {
-                stringBuilder
+                batchBuilder
                     .Append("SELECT ")
                     .Append(copyDataOperation.SourceColumnNames.Select(DelimitIdentifier).Join())
                     .Append(" FROM ")
@@ -424,31 +451,45 @@ namespace Microsoft.Data.Entity.Migrations
             }
         }
 
-        public virtual void Generate([NotNull] SqlOperation sqlOperation, [NotNull] IndentedStringBuilder stringBuilder)
+        public virtual void Generate([NotNull] SqlOperation sqlOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(sqlOperation, "sqlOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder.Append(sqlOperation.Sql);
+            batchBuilder.Append(sqlOperation.Sql, sqlOperation.SuppressTransaction);
         }
 
-        public virtual string GenerateDataType([NotNull] Table table, [NotNull] Column column)
+        protected abstract void EnsureSchema([CanBeNull] string schema, [NotNull] SqlBatchBuilder batchBuilder);
+
+        protected virtual void CreateSchema([NotNull] string schema, [NotNull] SqlBatchBuilder batchBuilder)
         {
-            Check.NotNull(table, "table");
+            Check.NotEmpty(schema, "schema");
+            Check.NotNull(batchBuilder, "batchBuilder");
+
+            batchBuilder
+                .Append("EXECUTE(")
+                .Append(GenerateLiteral("CREATE SCHEMA " + DelimitIdentifier(schema)))
+                .Append(")");
+        }
+
+        public virtual void GenerateColumnType(
+            SchemaQualifiedName tableName, [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
+        {
             Check.NotNull(column, "column");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
             if (!string.IsNullOrEmpty(column.DataType))
             {
-                return column.DataType;
+                batchBuilder.Append(column.DataType);
+                return;
             }
 
-            var isKey
-                = table.PrimaryKey != null
-                  && table.PrimaryKey.Columns.Contains(column)
-                  || table.UniqueConstraints.SelectMany(k => k.Columns).Contains(column)
-                  || table.ForeignKeys.SelectMany(k => k.Columns).Contains(column);
+            var entityType = TargetModel.EntityTypes.Single(t => NameBuilder.SchemaQualifiedTableName(t) == tableName);
+            var property = entityType.Properties.Single(p => NameBuilder.ColumnName(p) == column.Name);
+            var isKey = property.IsKey() || property.IsForeignKey();
 
-            return _typeMapper.GetTypeMapping(column.DataType, column.Name, column.ClrType, isKey, column.IsTimestamp).StoreTypeName;
+            batchBuilder.Append(_typeMapper.GetTypeMapping(column.DataType, 
+                column.Name, column.ClrType, isKey, column.IsTimestamp).StoreTypeName);
         }
 
         public virtual string GenerateLiteral([NotNull] object value)
@@ -465,7 +506,7 @@ namespace Microsoft.Data.Entity.Migrations
         {
             Check.NotNull(value, "value");
 
-            return "'" + value + "'";
+            return "'" + EscapeLiteral(value) + "'";
         }
 
         public virtual string GenerateLiteral(Guid value)
@@ -525,13 +566,6 @@ namespace Microsoft.Data.Entity.Migrations
             return identifier.Replace("\"", "\"\"");
         }
 
-        public virtual string DelimitLiteral([NotNull] string literal)
-        {
-            Check.NotNull(literal, "literal");
-
-            return "'" + EscapeLiteral(literal) + "'";
-        }
-
         public virtual string EscapeLiteral([NotNull] string literal)
         {
             Check.NotNull(literal, "literal");
@@ -540,80 +574,110 @@ namespace Microsoft.Data.Entity.Migrations
         }
 
         protected virtual void GenerateColumns(
-            [NotNull] Table table, [NotNull] IndentedStringBuilder stringBuilder)
+            [NotNull] CreateTableOperation createTableOperation, [NotNull] SqlBatchBuilder batchBuilder)
         {
-            Check.NotNull(table, "table");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(createTableOperation, "createTableOperation");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            var columns = table.Columns;
+            var columns = createTableOperation.Columns;
             if (columns.Count == 0)
             {
                 return;
             }
 
-            GenerateColumn(table, columns[0], stringBuilder);
+            GenerateColumn(createTableOperation.TableName, columns[0], batchBuilder);
 
             for (var i = 1; i < columns.Count; i++)
             {
-                stringBuilder.AppendLine(",");
+                batchBuilder.AppendLine(",");
 
-                GenerateColumn(table, columns[i], stringBuilder);
+                GenerateColumn(createTableOperation.TableName, columns[i], batchBuilder);
             }
         }
 
         protected virtual void GenerateColumn(
-            [NotNull] Table table, [NotNull] Column column, [NotNull] IndentedStringBuilder stringBuilder)
+            SchemaQualifiedName tableName, [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
         {
-            Check.NotNull(table, "table");
             Check.NotNull(column, "column");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            if (column.IsComputed && column.DefaultSql != null)
+            {
+                GenerateComputedColumn(tableName, column, batchBuilder);
+
+                return;
+            }
+
+            batchBuilder
                 .Append(DelimitIdentifier(column.Name))
                 .Append(" ");
 
-            stringBuilder.Append(GenerateDataType(table, column));
+            GenerateColumnType(tableName, column, batchBuilder);
+
+            GenerateNullConstraint(tableName, column, batchBuilder);
+
+            GenerateColumnTraits(tableName, column, batchBuilder);
+
+            GenerateDefaultConstraint(tableName, column, batchBuilder);
+        }
+
+        protected virtual void GenerateComputedColumn(SchemaQualifiedName tableName,
+            [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
+        {
+        }
+
+        protected virtual void GenerateColumnTraits(SchemaQualifiedName tableName,
+            [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
+        {
+        }
+
+        protected virtual void GenerateNullConstraint(
+            SchemaQualifiedName tableName, [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
+        {
+            Check.NotNull(column, "column");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
             if (!column.IsNullable)
             {
-                stringBuilder.Append(" NOT NULL");
+                batchBuilder.Append(" NOT NULL");
             }
+        }
 
-            GenerateColumnTraits(column, stringBuilder);
+        protected virtual void GenerateDefaultConstraint(
+            SchemaQualifiedName tableName, [NotNull] Column column, [NotNull] SqlBatchBuilder batchBuilder)
+        {
+            Check.NotNull(column, "column");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
             if (column.DefaultSql != null)
             {
-                stringBuilder
+                batchBuilder
                     .Append(" DEFAULT ")
                     .Append(column.DefaultSql);
             }
             else if (column.DefaultValue != null)
             {
-                stringBuilder
+                batchBuilder
                     .Append(" DEFAULT ")
                     .Append(GenerateLiteral((dynamic)column.DefaultValue));
             }
         }
 
-        protected virtual void GenerateColumnTraits([NotNull] Column column, [NotNull] IndentedStringBuilder stringBuilder)
-        {
-        }
-
         protected virtual void GeneratePrimaryKey(
             [NotNull] AddPrimaryKeyOperation primaryKeyOperation,
-            [NotNull] IndentedStringBuilder stringBuilder)
+            [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(primaryKeyOperation, "primaryKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("CONSTRAINT ")
                 .Append(DelimitIdentifier(primaryKeyOperation.PrimaryKeyName))
                 .Append(" PRIMARY KEY");
 
-            GeneratePrimaryKeyTraits(primaryKeyOperation, stringBuilder);
+            GeneratePrimaryKeyTraits(primaryKeyOperation, batchBuilder);
 
-            stringBuilder
+            batchBuilder
                 .Append(" (")
                 .Append(primaryKeyOperation.ColumnNames.Select(DelimitIdentifier).Join())
                 .Append(")");
@@ -621,18 +685,18 @@ namespace Microsoft.Data.Entity.Migrations
 
         protected virtual void GeneratePrimaryKeyTraits(
             [NotNull] AddPrimaryKeyOperation primaryKeyOperation,
-            [NotNull] IndentedStringBuilder stringBuilder)
+            [NotNull] SqlBatchBuilder batchBuilder)
         {
         }
 
         protected virtual void GenerateUniqueConstraint(
             [NotNull] AddUniqueConstraintOperation uniqueConstraintOperation,
-            [NotNull] IndentedStringBuilder stringBuilder)
+            [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(uniqueConstraintOperation, "uniqueConstraintOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("CONSTRAINT ")
                 .Append(DelimitIdentifier(uniqueConstraintOperation.UniqueConstraintName))
                 .Append(" UNIQUE (")
@@ -642,12 +706,12 @@ namespace Microsoft.Data.Entity.Migrations
 
         protected virtual void GenerateForeignKey(
             [NotNull] AddForeignKeyOperation foreignKeyOperation,
-            [NotNull] IndentedStringBuilder stringBuilder)
+            [NotNull] SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(foreignKeyOperation, "foreignKeyOperation");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            stringBuilder
+            batchBuilder
                 .Append("CONSTRAINT ")
                 .Append(DelimitIdentifier(foreignKeyOperation.ForeignKeyName))
                 .Append(" FOREIGN KEY (")
@@ -660,7 +724,7 @@ namespace Microsoft.Data.Entity.Migrations
 
             if (foreignKeyOperation.CascadeDelete)
             {
-                stringBuilder.Append(" ON DELETE CASCADE");
+                batchBuilder.Append(" ON DELETE CASCADE");
             }
         }
     }

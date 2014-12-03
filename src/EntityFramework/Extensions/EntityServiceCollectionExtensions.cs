@@ -2,14 +2,13 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity;
 using Microsoft.Data.Entity.ChangeTracking;
 using Microsoft.Data.Entity.Identity;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
+using Microsoft.Data.Entity.Query;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.ConfigurationModel;
@@ -30,13 +29,20 @@ namespace Microsoft.Framework.DependencyInjection
         {
             Check.NotNull(serviceCollection, "serviceCollection");
 
+            // TODO: Is this the appropriate way to register listeners?
             serviceCollection
+                .AddScoped<IEntityStateListener>(p => p.GetService<NavigationFixer>())
+                .AddScoped<IRelationshipListener>(p => p.GetService<NavigationFixer>())
+                .AddScoped<IPropertyListener>(p => p.GetService<ChangeDetector>());
+
+            serviceCollection.TryAdd(new ServiceCollection()
                 .AddSingleton<IModelSource, DefaultModelSource>()
                 .AddSingleton<ModelBuilderFactory>()
                 .AddSingleton<SimpleValueGeneratorFactory<TemporaryValueGenerator>>()
                 .AddSingleton<SimpleValueGeneratorFactory<GuidValueGenerator>>()
                 .AddSingleton<DbSetFinder>()
                 .AddSingleton<DbSetInitializer>()
+                .AddSingleton<DbSetSource>()
                 .AddSingleton<EntityKeyFactorySource>()
                 .AddSingleton<ClrPropertyGetterSource>()
                 .AddSingleton<ClrPropertySetterSource>()
@@ -54,59 +60,29 @@ namespace Microsoft.Framework.DependencyInjection
                 .AddSingleton<StateEntryMetadataServices>()
                 .AddScoped<DataStoreSelector>()
                 .AddScoped<StateEntryFactory>()
-                .AddScoped<IEntityStateListener, NavigationFixer>()
-                .AddScoped<StateEntryNotifier>()
+                .AddScoped<NavigationFixer>()
                 .AddScoped<ChangeDetector>()
+                .AddScoped<StateEntryNotifier>()
                 .AddScoped<StateEntrySubscriber>()
-                .AddScoped<DbContextConfiguration>()
-                .AddScoped<ContextSets>()
+                .AddScoped<DbContextServices>()
                 .AddScoped<StateManager>()
                 .AddScoped<ValueGenerationManager>()
-                .AddScoped<LazyRef<IModel>>(DbContextConfiguration.ModelFactory)
-                .AddScoped<LazyRef<DbContext>>(DbContextConfiguration.ContextFactory)
-                .AddScoped<LazyRef<IDbContextOptions>>(DbContextConfiguration.ContextOptionsFactory)
-                .AddScoped<LazyRef<DataStoreServices>>(DataStoreServices.DataStoreServicesFactory)
-                .AddScoped<LazyRef<DataStore>>(DataStoreServices.DataStoreFactory)
-                .AddScoped<LazyRef<DataStoreConnection>>(DataStoreServices.ConnectionFactory)
-                .AddScoped<LazyRef<Database>>(DataStoreServices.DatabaseFactory)
-                .AddScoped<LazyRef<ValueGeneratorCache>>(DataStoreServices.ValueGeneratorCacheFactory)
-                .AddScoped<LazyRef<DataStoreCreator>>(DataStoreServices.DataStoreCreatorFactory);
-
-            EnsureLowLevelServices(serviceCollection);
+                .AddScoped<EntityQueryExecutor>()
+                .AddScoped<ChangeTracker>()
+                .AddScoped(DbContextServices.ModelFactory)
+                .AddScoped(DbContextServices.ContextFactory)
+                .AddScoped(DbContextServices.ContextOptionsFactory)
+                .AddScoped(DataStoreServices.DataStoreServicesFactory)
+                .AddScoped(DataStoreServices.DataStoreFactory)
+                .AddScoped(DataStoreServices.ConnectionFactory)
+                .AddScoped(DataStoreServices.DatabaseFactory)
+                .AddScoped(DataStoreServices.ValueGeneratorCacheFactory)
+                .AddScoped(DataStoreServices.DataStoreCreatorFactory)
+                .AddSingleton<ILoggerFactory, LoggerFactory>()
+                .AddTypeActivator()
+                .AddOptions());
 
             return new EntityServicesBuilder(serviceCollection, configuration);
-        }
-
-        private static void EnsureLowLevelServices(IServiceCollection serviceCollection)
-        {
-            var requiredServices = new List<Tuple<Type, Action<IServiceCollection>>>
-                {
-                    Tuple.Create<Type, Action<IServiceCollection>>(typeof(ILoggerFactory), c => c.AddSingleton<ILoggerFactory, LoggerFactory>()),
-                    Tuple.Create<Type, Action<IServiceCollection>>(typeof(ITypeActivator), c => c.AddSingleton<ITypeActivator, TypeActivator>()),
-                    Tuple.Create<Type, Action<IServiceCollection>>(typeof(IOptions<>), c => c.Add(OptionsServices.GetDefaultServices())),
-                };
-
-            foreach (var descriptor in serviceCollection)
-            {
-                foreach (var serviceTuple in requiredServices)
-                {
-                    if (serviceTuple.Item1 == descriptor.ServiceType)
-                    {
-                        requiredServices.Remove(serviceTuple);
-                        break;
-                    }
-                }
-
-                if (!requiredServices.Any())
-                {
-                    break;
-                }
-            }
-
-            foreach (var serviceTuple in requiredServices)
-            {
-                serviceTuple.Item2(serviceCollection);
-            }
         }
 
         public static EntityServicesBuilder AddDbContext<TContext>(
@@ -116,7 +92,7 @@ namespace Microsoft.Framework.DependencyInjection
         {
             Check.NotNull(builder, "builder");
 
-            builder.ServiceCollection.AddSingleton<DbContextOptions<TContext>>(
+            builder.ServiceCollection.AddSingleton(
                 sp => sp.GetRequiredServiceChecked<IOptions<DbContextOptions<TContext>>>().Options);
 
             if (builder.Configuration != null)
@@ -134,7 +110,7 @@ namespace Microsoft.Framework.DependencyInjection
                 builder.ServiceCollection.Configure<DbContextOptions<TContext>>(optionsAction);
             }
 
-            builder.ServiceCollection.AddScoped(typeof(TContext), DbContextActivator.CreateInstance<TContext>);
+            ServiceCollectionExtensions.AddScoped(builder.ServiceCollection, typeof(TContext), (Func<IServiceProvider, object>)(DbContextActivator.CreateInstance<TContext>));
 
             return builder;
         }

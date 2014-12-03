@@ -7,33 +7,45 @@ using System.Linq;
 using System.Reflection;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Infrastructure;
-using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Utilities;
 
 namespace Microsoft.Data.Entity.Migrations.Infrastructure
 {
     public class MigrationAssembly
     {
-        private readonly DbContextConfiguration _contextConfiguration;
+        private readonly DbContextService<DbContext> _context;
+        private readonly DbContextService<IDbContextOptions> _options;
 
         private IReadOnlyList<Migration> _migrations;
-        private IModel _model;
+        private ModelSnapshot _modelSnapshot;
 
-        public MigrationAssembly([NotNull] DbContextConfiguration contextConfiguration)
+        /// <summary>
+        ///     This constructor is intended only for use when creating test doubles that will override members
+        ///     with mocked or faked behavior. Use of this constructor for other purposes may result in unexpected
+        ///     behavior including but not limited to throwing <see cref="NullReferenceException" />.
+        /// </summary>
+        protected MigrationAssembly()
         {
-            Check.NotNull(contextConfiguration, "contextConfiguration");
-
-            _contextConfiguration = contextConfiguration;
         }
 
-        protected virtual DbContextConfiguration ContextConfiguration
+        public MigrationAssembly([NotNull] DbContextService<DbContext> context, [NotNull] DbContextService<IDbContextOptions> options)
         {
-            get { return _contextConfiguration; }
+            Check.NotNull(context, "context");
+            Check.NotNull(options, "options");
+
+            _context = context;
+            _options = options;
         }
 
         public virtual Assembly Assembly
         {
-            get { return ContextConfiguration.GetMigrationAssembly(); }
+            get
+            {
+                var extension = MigrationsOptionsExtension.Extract(_options.Service);
+                return extension != null && extension.MigrationAssembly != null
+                    ? extension.MigrationAssembly
+                    : _context.Service.GetType().GetTypeInfo().Assembly;
+            }
         }
 
         public virtual IReadOnlyList<Migration> Migrations
@@ -41,9 +53,9 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
             get { return _migrations ?? (_migrations = LoadMigrations()); }
         }
 
-        public virtual IModel Model
+        public virtual ModelSnapshot ModelSnapshot
         {
-            get { return _model ?? (_model = LoadModel()); }
+            get { return _modelSnapshot ?? (_modelSnapshot = LoadModelSnapshot()); }
         }
 
         public static IEnumerable<Type> GetMigrationTypes([NotNull] Assembly assembly)
@@ -71,14 +83,14 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
 
         protected virtual IReadOnlyList<Migration> LoadMigrations()
         {
-            var contextType = ContextConfiguration.Context.GetType();
+            var contextType = _context.Service.GetType();
             return LoadMigrations(GetMigrationTypes(Assembly), contextType)
                 .ToArray();
         }
 
-        protected virtual IModel LoadModel()
+        protected virtual ModelSnapshot LoadModelSnapshot()
         {
-            var contextType = ContextConfiguration.Context.GetType();
+            var contextType = _context.Service.GetType();
             var modelSnapshotType = Assembly.GetAccessibleTypes().SingleOrDefault(
                 t => t.GetTypeInfo().IsSubclassOf(typeof(ModelSnapshot))
                      && t.GetPublicConstructor() != null
@@ -87,7 +99,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
                      && TryGetContextType(t) == contextType);
 
             return modelSnapshotType != null
-                ? ((ModelSnapshot)Activator.CreateInstance(modelSnapshotType)).Model
+                ? (ModelSnapshot)Activator.CreateInstance(modelSnapshotType)
                 : null;
         }
 

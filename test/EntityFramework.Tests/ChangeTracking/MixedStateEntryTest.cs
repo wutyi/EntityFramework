@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata;
 using Xunit;
 
@@ -13,7 +14,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         public void Can_get_entity()
         {
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
+            var configuration = TestHelpers.CreateContextServices(model);
 
             var entity = new SomeEntity();
             var entry = CreateStateEntry(configuration, model.GetEntityType(typeof(SomeEntity).FullName), entity);
@@ -28,7 +29,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             var entityType = model.GetEntityType(typeof(SomeEntity).FullName);
             var keyProperty = entityType.GetProperty("Id");
             var nonKeyProperty = entityType.GetProperty("Name");
-            var configuration = TestHelpers.CreateContextConfiguration(model);
+            var configuration = TestHelpers.CreateContextServices(model);
 
             var entity = new SomeEntity { Id = 77, Name = "Magic Tree House" };
             var entry = CreateStateEntry(configuration, entityType, entity);
@@ -48,7 +49,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         {
             var model = BuildModel();
             var entityType = model.GetEntityType(typeof(SomeEntity).FullName);
-            var configuration = TestHelpers.CreateContextConfiguration(model);
+            var configuration = TestHelpers.CreateContextServices(model);
 
             var entry = CreateStateEntry(configuration, entityType, new ObjectArrayValueReader(new object[] { 1, "Kool" }));
 
@@ -100,7 +101,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             var model = BuildModel();
             var entityType = model.GetEntityType(typeof(FullNotificationEntity).FullName);
             var idProperty = entityType.GetProperty("Id");
-            var configuration = TestHelpers.CreateContextConfiguration(model);
+            var configuration = TestHelpers.CreateContextServices(model);
 
             var entry = CreateStateEntry(configuration, entityType, new ObjectArrayValueReader(new object[] { 1, "Kool" }));
 

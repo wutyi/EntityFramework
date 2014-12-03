@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
@@ -26,7 +27,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
         private readonly SqlStatementExecutor _sqlExecutor;
         private readonly RelationalDataStoreCreator _storeCreator;
         private readonly RelationalConnection _connection;
-        private readonly LazyRef<ILogger> _logger;
+        private readonly DbContextService<ILogger> _logger;
 
         /// <summary>
         ///     This constructor is intended only for use when creating test doubles that will override members
@@ -66,7 +67,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
             _sqlExecutor = sqlExecutor;
             _storeCreator = storeCreator;
             _connection = connection;
-            _logger = new LazyRef<ILogger>(loggerFactory.Create<Migrator>);
+            _logger = new DbContextService<ILogger>(loggerFactory.Create<Migrator>);
         }
 
         public virtual HistoryRepository HistoryRepository
@@ -101,7 +102,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
 
         protected virtual ILogger Logger
         {
-            get { return _logger.Value; }
+            get { return _logger.Service; }
         }
 
         public virtual IReadOnlyList<Migration> GetLocalMigrations()
@@ -117,7 +118,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
                 migrationPairs
                     .Where(p => p.HistoryRow != null)
                     .Select(p => p.LocalMigration)
-                    .ToArray();
+                    .ToList();
         }
 
         public virtual IReadOnlyList<Migration> GetPendingMigrations()
@@ -128,7 +129,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
                 migrationPairs
                     .Where(p => p.HistoryRow == null)
                     .Select(p => p.LocalMigration)
-                    .ToArray();
+                    .ToList();
         }
 
         public virtual void ApplyMigrations()
@@ -143,19 +144,19 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
             ApplyMigrations(GetTargetMigrationIndex(targetMigrationName), simulate: false);
         }
 
-        public virtual IReadOnlyList<SqlStatement> ScriptMigrations()
+        public virtual IReadOnlyList<SqlBatch> ScriptMigrations()
         {
             return ApplyMigrations(MigrationAssembly.Migrations.Count - 1, simulate: true);
         }
 
-        public virtual IReadOnlyList<SqlStatement> ScriptMigrations([NotNull] string targetMigrationName)
+        public virtual IReadOnlyList<SqlBatch> ScriptMigrations([NotNull] string targetMigrationName)
         {
             Check.NotEmpty(targetMigrationName, "targetMigrationName");
 
             return ApplyMigrations(GetTargetMigrationIndex(targetMigrationName), simulate: true);
         }
 
-        protected virtual IReadOnlyList<SqlStatement> ApplyMigrations(int targetMigrationIndex, bool simulate)
+        protected virtual IReadOnlyList<SqlBatch> ApplyMigrations(int targetMigrationIndex, bool simulate)
         {
             bool historyTableExists;
             var migrationPairs = PairMigrations(MigrationAssembly.Migrations, HistoryRepository.GetRows(out historyTableExists));
@@ -165,13 +166,13 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
                     .Skip(targetMigrationIndex + 1)
                     .Where(i => migrationPairs[i].HistoryRow != null)
                     .Reverse()
-                    .ToArray();
+                    .ToList();
             var upgradeIndexes
                 = MigrationAssembly.Migrations
                     .Select((m, i) => i)
                     .Take(targetMigrationIndex + 1)
                     .Where(i => migrationPairs[i].HistoryRow == null)
-                    .ToArray();
+                    .ToList();
 
             if (!simulate
                 && !_storeCreator.Exists())
@@ -179,78 +180,78 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
                 _storeCreator.Create();
             }
 
-            var statements = new List<SqlStatement>();
+            var batches = new List<SqlBatch>();
 
             if (upgradeIndexes.Any()
                 && !historyTableExists)
             {
-                statements.AddRange(CreateHistoryTable(simulate));
+                batches.AddRange(CreateHistoryTable(simulate));
             }
 
-            statements.AddRange(downgradeIndexes.SelectMany(i => RevertMigration(i, simulate)));
+            batches.AddRange(downgradeIndexes.SelectMany(i => RevertMigration(i, simulate)));
 
-            statements.AddRange(upgradeIndexes.SelectMany(i => ApplyMigration(i, simulate)));
+            batches.AddRange(upgradeIndexes.SelectMany(i => ApplyMigration(i, simulate)));
 
             if (targetMigrationIndex == -1 && historyTableExists)
             {
-                statements.AddRange(DropHistoryTable(simulate));
+                batches.AddRange(DropHistoryTable(simulate));
             }
 
-            if (statements.Count == 0)
+            if (batches.Count == 0)
             {
                 Logger.UpToDate();
             }
 
-            return statements;
+            return batches;
         }
 
-        protected virtual IReadOnlyList<SqlStatement> CreateHistoryTable(bool simulate)
+        protected virtual IReadOnlyList<SqlBatch> CreateHistoryTable(bool simulate)
         {
-            var targetDatabase = ModelDiffer.DatabaseBuilder.GetDatabase(HistoryRepository.HistoryModel);
-            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetDatabase);
+            var targetModel = HistoryRepository.HistoryModel;
+            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetModel);
 
-            var statements = ddlSqlGenerator.Generate(ModelDiffer.CreateSchema(targetDatabase)).ToArray();
+            var batches = ddlSqlGenerator.Generate(ModelDiffer.CreateSchema(targetModel)).ToArray();
 
             if (simulate)
             {
-                return statements;
+                return batches;
             }
 
             Logger.CreatingHistoryTable();
 
-            ExecuteStatements(statements);
+            ExecuteSqlBatches(batches);
 
-            return statements;
+            return batches;
         }
 
-        protected virtual IReadOnlyList<SqlStatement> DropHistoryTable(bool simulate)
+        protected virtual IReadOnlyList<SqlBatch> DropHistoryTable(bool simulate)
         {
-            var sourceDatabase = ModelDiffer.DatabaseBuilder.GetDatabase(HistoryRepository.HistoryModel);
+            var sourceModel = HistoryRepository.HistoryModel;
             var ddlSqlGenerator = DdlSqlGeneratorFactory.Create();
 
-            var statements = ddlSqlGenerator.Generate(ModelDiffer.DropSchema(sourceDatabase)).ToArray();
+            var batches = ddlSqlGenerator.Generate(ModelDiffer.DropSchema(sourceModel)).ToArray();
 
             if (simulate)
             {
-                return statements;
+                return batches;
             }
 
             Logger.DroppingHistoryTable();
 
-            ExecuteStatements(statements);
+            ExecuteSqlBatches(batches);
 
-            return statements;
+            return batches;
         }
 
-        protected virtual IReadOnlyList<SqlStatement> ApplyMigration(int index, bool simulate)
+        protected virtual IReadOnlyList<SqlBatch> ApplyMigration(int index, bool simulate)
         {
             var migration = MigrationAssembly.Migrations[index];
-            var targetDatabase = ModelDiffer.DatabaseBuilder.GetDatabase(migration.GetTargetModel());
-            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetDatabase);
+            var targetModel = migration.GetTargetModel();
+            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetModel);
 
             var statements = ddlSqlGenerator.Generate(migration.GetUpgradeOperations())
                 .Concat(HistoryRepository.GenerateInsertMigrationSql(migration.GetMetadata(), DmlSqlGenerator))
-                .ToArray();
+                .ToList();
 
             if (simulate)
             {
@@ -259,31 +260,31 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
 
             Logger.ApplyingMigration(migration.GetMigrationId());
 
-            ExecuteStatements(statements);
+            ExecuteSqlBatches(statements);
 
             return statements;
         }
 
-        protected virtual IReadOnlyList<SqlStatement> RevertMigration(int index, bool simulate)
+        protected virtual IReadOnlyList<SqlBatch> RevertMigration(int index, bool simulate)
         {
             var migration = MigrationAssembly.Migrations[index];
-            var targetDatabase = ModelDiffer.DatabaseBuilder.GetDatabase(GetSourceModel(index));
-            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetDatabase);
+            var targetModel = GetSourceModel(index);
+            var ddlSqlGenerator = DdlSqlGeneratorFactory.Create(targetModel);
 
-            var statements = ddlSqlGenerator.Generate(migration.GetDowngradeOperations())
+            var batches = ddlSqlGenerator.Generate(migration.GetDowngradeOperations())
                 .Concat(HistoryRepository.GenerateDeleteMigrationSql(migration.GetMetadata(), DmlSqlGenerator))
-                .ToArray();
+                .ToList();
 
             if (simulate)
             {
-                return statements;
+                return batches;
             }
 
             Logger.RevertingMigration(migration.GetMigrationId());
 
-            ExecuteStatements(statements);
+            ExecuteSqlBatches(batches);
 
-            return statements;
+            return batches;
         }
 
         protected virtual IReadOnlyList<MigrationPair> PairMigrations(
@@ -358,39 +359,39 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
             return index == 0 ? new Metadata.Model() : MigrationAssembly.Migrations[index - 1].GetTargetModel();
         }
 
-        protected virtual void ExecuteStatements([NotNull] IEnumerable<SqlStatement> sqlStatements)
+        protected virtual void ExecuteSqlBatches([NotNull] IEnumerable<SqlBatch> sqlBatches)
         {
-            Check.NotNull(sqlStatements, "sqlStatements");
+            Check.NotNull(sqlBatches, "sqlBatches");
 
-            var pendingStatements = new List<SqlStatement>();
+            var pendingBatches = new List<SqlBatch>();
 
-            foreach (var statement in sqlStatements.Where(s => !string.IsNullOrEmpty(s.Sql)))
+            foreach (var sqlBatch in sqlBatches.Where(b => !string.IsNullOrEmpty(b.Sql)))
             {
-                if (!statement.SuppressTransaction)
+                if (!sqlBatch.SuppressTransaction)
                 {
-                    pendingStatements.Add(statement);
+                    pendingBatches.Add(sqlBatch);
 
                     continue;
                 }
 
-                if (pendingStatements.Any())
+                if (pendingBatches.Any())
                 {
-                    ExecuteStatementsWithinTransaction(pendingStatements, _connection);
+                    ExecuteStatementsWithinTransaction(pendingBatches, _connection);
 
-                    pendingStatements.Clear();
+                    pendingBatches.Clear();
                 }
 
-                ExecuteStatementsWithoutTransaction(new[] { statement }, _connection);
+                ExecuteStatementsWithoutTransaction(new[] { sqlBatch }, _connection);
             }
 
-            if (pendingStatements.Any())
+            if (pendingBatches.Any())
             {
-                ExecuteStatementsWithinTransaction(pendingStatements, _connection);
+                ExecuteStatementsWithinTransaction(pendingBatches, _connection);
             }
         }
 
         protected virtual void ExecuteStatementsWithinTransaction(
-            [NotNull] IEnumerable<SqlStatement> sqlStatements, [NotNull] RelationalConnection connection)
+            [NotNull] IEnumerable<SqlBatch> sqlStatements, [NotNull] RelationalConnection connection)
         {
             Check.NotNull(sqlStatements, "sqlStatements");
             Check.NotNull(connection, "connection");
@@ -414,7 +415,7 @@ namespace Microsoft.Data.Entity.Migrations.Infrastructure
         }
 
         protected virtual void ExecuteStatementsWithoutTransaction(
-            [NotNull] IEnumerable<SqlStatement> sqlStatements, [NotNull] RelationalConnection connection)
+            [NotNull] IEnumerable<SqlBatch> sqlStatements, [NotNull] RelationalConnection connection)
         {
             Check.NotNull(sqlStatements, "sqlStatements");
             Check.NotNull(connection, "connection");

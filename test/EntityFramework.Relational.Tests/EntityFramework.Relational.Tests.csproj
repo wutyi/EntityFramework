@@ -73,32 +73,30 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\RelationalTestHelpers.cs">
+      <Link>RelationalTestHelpers.cs</Link>
+    </Compile>
     <Compile Include="ApiConsistencyTest.cs" />
-    <Compile Include="DatabaseBuilderTest.cs" />
     <Compile Include="Metadata\RelationalMetadataExtensionsTest.cs" />
+    <Compile Include="Metadata\RelationalNameBuilderTest.cs" />
     <Compile Include="Metadata\SequenceTest.cs" />
     <Compile Include="Model\RelationalTypeMappingTest.cs" />
     <Compile Include="Metadata\RelationalBuilderExtensionsTest.cs" />
-    <Compile Include="Model\UniqueConstraintTest.cs" />
     <Compile Include="RelationalConnectionTest.cs" />
     <Compile Include="RelationalDatabaseExtensionsTest.cs" />
     <Compile Include="RelationalDatabaseTest.cs" />
     <Compile Include="RelationalDataStoreTest.cs" />
+    <Compile Include="RelationalEntityServicesBuilderExtensionsTest.cs" />
     <Compile Include="RelationalObjectArrayValueReaderFactoryTest.cs" />
     <Compile Include="RelationalObjectArrayValueReaderTest.cs" />
     <Compile Include="RelationalTypedValueReaderFactoryTest.cs" />
     <Compile Include="RelationalTypedValueReaderTest.cs" />
     <Compile Include="SchemaQualifiedNameTest.cs" />
+    <Compile Include="SqlBatchBuilderTest.cs" />
     <Compile Include="SqlGeneratorTest.cs" />
     <Compile Include="SqlGeneratorTestBase.cs" />
-    <Compile Include="Model\ColumnTest.cs" />
-    <Compile Include="Model\DatabaseModelTest.cs" />
-    <Compile Include="Model\ForeignKeyTest.cs" />
-    <Compile Include="Model\IndexTest.cs" />
-    <Compile Include="Model\PrimaryKeyTest.cs" />
     <Compile Include="Model\RelationalTypeMapperTest.cs" />
-    <Compile Include="Model\SequenceTest.cs" />
-    <Compile Include="Model\TableTest.cs" />
+    <Compile Include="TestHelperExtensions.cs" />
     <Compile Include="Update\BatchExecutorTest.cs" />
     <Compile Include="Update\ColumnModificationTest.cs" />
     <Compile Include="Update\CommandBatchPreparerTest.cs" />
@@ -108,6 +106,7 @@
     <Compile Include="Update\ModificationCommandTest.cs" />
     <Compile Include="Utilities\StringBuilderExtensionsTest.cs" />
     <Compile Include="..\Shared\ApiConsistencyTestBase.cs" />
+    <Compile Include="..\Shared\TestHelpers.cs" />
     <None Include="project.json" />
   </ItemGroup>
   <ItemGroup>

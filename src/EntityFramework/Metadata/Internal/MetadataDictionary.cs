@@ -15,6 +15,8 @@ namespace Microsoft.Data.Entity.Metadata.Internal
         private readonly Dictionary<TKey, Tuple<TValue, ConfigurationSource>> _values =
             new Dictionary<TKey, Tuple<TValue, ConfigurationSource>>();
 
+        private readonly ConfigurationSource _defaultConfigurationSource = ConfigurationSource.Explicit;
+
         public virtual TValue GetOrAdd(
             [NotNull] Func<TKey> getKey,
             [NotNull] Func<TKey> createKey,
@@ -58,7 +60,7 @@ namespace Microsoft.Data.Entity.Metadata.Internal
                 {
                     return value;
                 }
-                configurationSource = ConfigurationSource.Explicit;
+                configurationSource = _defaultConfigurationSource;
             }
 
             value = createValue(key, isNewKey);
@@ -85,6 +87,17 @@ namespace Microsoft.Data.Entity.Metadata.Internal
             return default(TValue);
         }
 
+        public virtual ConfigurationSource GetConfigurationSource([NotNull] TKey key)
+        {
+            Tuple<TValue, ConfigurationSource> tuple;
+            if (_values.TryGetValue(key, out tuple))
+            {
+                return tuple.Item2;
+            }
+
+            return _defaultConfigurationSource;
+        }
+
         public virtual void Add([NotNull] TKey key, [NotNull] TValue value, ConfigurationSource configurationSource)
         {
             Check.NotNull(key, "key");
@@ -93,21 +106,27 @@ namespace Microsoft.Data.Entity.Metadata.Internal
             _values.Add(key, new Tuple<TValue, ConfigurationSource>(value, configurationSource));
         }
 
-        public virtual bool Remove([NotNull] TKey key, ConfigurationSource configurationSource)
+        public virtual bool Remove([NotNull] TKey key, ConfigurationSource configurationSource, bool canOverrideSameSource = true)
         {
             Check.NotNull(key, "key");
 
             Tuple<TValue, ConfigurationSource> tuple;
             if (_values.TryGetValue(key, out tuple))
             {
-                if (configurationSource.Overrides(tuple.Item2))
+                if (configurationSource.Overrides(tuple.Item2)
+                    && (tuple.Item2 != configurationSource || canOverrideSameSource))
                 {
                     _values.Remove(key);
                     return true;
                 }
+                else
+                {
+                    return false;
+                }
             }
 
-            return configurationSource == ConfigurationSource.Explicit;
+            return configurationSource == ConfigurationSource.Explicit
+                   && canOverrideSameSource;
         }
     }
 }

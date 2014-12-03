@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Linq;
 using Microsoft.Data.Entity.Metadata;
 
 namespace Microsoft.Data.Entity.FunctionalTests.TestModels
@@ -27,11 +28,6 @@ namespace Microsoft.Data.Entity.FunctionalTests.TestModels
                         eb.Property(typeof(string), SimpleEntity.ShadowPartitionIdName);
                         eb
                             .ForRelational(b => b.Table("RelationalSimpleEntity")) // TODO: specify schema when #948 is fixed
-                            .ForAzureTableStorage(b =>
-                                {
-                                    b.Table("ATSSimpleEntity" + AtsTableSuffix);
-                                    b.PartitionAndRowKey(SimpleEntity.ShadowPartitionIdName, "Id");
-                                })
                             .ForSqlServer(b =>
                                 {
                                     b.Table("SqlServerSimpleEntity"); // TODO: specify schema when #948 is fixed
@@ -46,7 +42,7 @@ namespace Microsoft.Data.Entity.FunctionalTests.TestModels
 
         public static void RemoveAllEntities(CrossStoreContext context)
         {
-            context.SimpleEntities.RemoveRange(context.SimpleEntities);
+            context.SimpleEntities.Remove(context.SimpleEntities.ToArray());
         }
     }
 }

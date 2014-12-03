@@ -67,12 +67,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DeadlockTest.cs" />
+    <Compile Include="EntityTypeTest.cs" />
     <Compile Include="InMemoryAsNoTrackingTest.cs" />
     <Compile Include="InMemoryFixture.cs" />
     <Compile Include="InMemoryTestStore.cs" />
     <Compile Include="InMemoryBuiltInDataTypesFixture.cs" />
     <Compile Include="InMemoryBuiltInDataTypesTest.cs" />
-    <Compile Include="IncludeOneToOneTest.cs" />
+    <Compile Include="InMemoryIncludeOneToOneTest.cs" />
     <Compile Include="MusicStoreQueryTests.cs" />
     <Compile Include="CompositeKeyEndToEndTest.cs" />
     <Compile Include="GuidValueGeneratorEndToEndTest.cs" />
@@ -80,7 +81,7 @@
     <Compile Include="InMemoryConfigPatternsTest.cs" />
     <Compile Include="InMemoryDataStoreTest.cs" />
     <Compile Include="InMemoryIntegerGeneratorEndToEndTest.cs" />
-    <Compile Include="MonsterFixupTest.cs" />
+    <Compile Include="InMemoryMonsterFixupTest.cs" />
     <Compile Include="OneToOneQueryFixture.cs" />
     <Compile Include="InMemoryNorthwindQueryFixture.cs" />
     <Compile Include="InMemoryAsyncQueryTest.cs" />

@@ -9,17 +9,19 @@ using System.Linq.Expressions;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.ChangeTracking;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Query;
 using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.Logging;
 
 namespace Microsoft.Data.Entity
 {
-    public class DbSet<TEntity> : DbSet, IOrderedQueryable<TEntity>, IAsyncEnumerableAccessor<TEntity>
+    public class DbSet<TEntity> : IOrderedQueryable<TEntity>, IAsyncEnumerableAccessor<TEntity>
         where TEntity : class
     {
-        private readonly EntityQueryable<TEntity> _entityQueryable;
+        private readonly DbContext _context;
+        private readonly LazyRef<EntityQueryable<TEntity>> _entityQueryable;
 
         /// <summary>
         ///     This constructor is intended only for use when creating test doubles that will override members
@@ -31,110 +33,124 @@ namespace Microsoft.Data.Entity
         }
 
         public DbSet([NotNull] DbContext context)
-            : base(Check.NotNull(context, "context"))
         {
-            // TODO: Decouple from DbContextConfiguration (Issue #641)
-            _entityQueryable
-                = new EntityQueryable<TEntity>(new EntityQueryExecutor(
-                    context, 
-                    new LazyRef<ILoggerFactory>(() => context.Configuration.Services.ServiceProvider.GetRequiredServiceChecked<ILoggerFactory>())));
+            Check.NotNull(context, "context");
+
+            _context = context;
+            // Using context/service locator here so that the context will be initialized the first time the
+            // set is used and services will be obtained from the correctly scoped container when this happens.
+            _entityQueryable = new LazyRef<EntityQueryable<TEntity>>(
+                () => new EntityQueryable<TEntity>(
+                    ((IDbContextServices)_context).ScopedServiceProvider.GetRequiredServiceChecked<EntityQueryExecutor>()));
         }
 
-        public virtual TEntity Add([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Add([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            return Configuration.Context.Add(entity);
+            return _context.Add(entity);
         }
 
-        public virtual Task<TEntity> AddAsync(
+        public virtual Task<EntityEntry<TEntity>> AddAsync(
             [NotNull] TEntity entity, CancellationToken cancellationToken = default(CancellationToken))
         {
             Check.NotNull(entity, "entity");
 
-            return Configuration.Context.AddAsync(entity, cancellationToken);
+            return _context.AddAsync(entity, cancellationToken);
         }
 
-        public virtual TEntity Remove([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Attach([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            return Configuration.Context.Delete(entity);
+            return _context.Attach(entity);
         }
 
-        public virtual TEntity Update([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Remove([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            return Configuration.Context.Update(entity);
+            return _context.Remove(entity);
         }
 
-        public virtual Task<TEntity> UpdateAsync(
-            [NotNull] TEntity entity, CancellationToken cancellationToken = default(CancellationToken))
+        public virtual EntityEntry<TEntity> Update([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            return Configuration.Context.UpdateAsync(entity, cancellationToken);
+            return _context.Update(entity);
         }
 
-        public virtual void AddRange([NotNull] IEnumerable<TEntity> entities)
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Add([NotNull] params TEntity[] entities)
         {
             Check.NotNull(entities, "entities");
 
-            foreach (var entity in entities)
-            {
-                Add(entity);
-            }
+            return _context.Add(entities);
         }
 
-        public virtual void RemoveRange([NotNull] IEnumerable<TEntity> entities)
+        public virtual Task<IReadOnlyList<EntityEntry<TEntity>>> AddAsync([NotNull] params TEntity[] entities)
         {
             Check.NotNull(entities, "entities");
 
-            foreach (var entity in entities)
-            {
-                Remove(entity);
-            }
+            return _context.AddAsync(entities);
         }
 
-        public virtual void UpdateRange([NotNull] IEnumerable<TEntity> entities)
+        public virtual Task<IReadOnlyList<EntityEntry<TEntity>>> AddAsync(
+            CancellationToken cancellationToken, [NotNull] params TEntity[] entities)
         {
             Check.NotNull(entities, "entities");
 
-            foreach (var entity in entities)
-            {
-                Update(entity);
-            }
+            return _context.AddAsync(entities, cancellationToken);
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Attach([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return _context.Attach(entities);
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Remove([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return _context.Remove(entities);
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Update([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return _context.Update(entities);
         }
 
         IEnumerator<TEntity> IEnumerable<TEntity>.GetEnumerator()
         {
-            return _entityQueryable.GetEnumerator();
+            return _entityQueryable.Value.GetEnumerator();
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return _entityQueryable.GetEnumerator();
+            return _entityQueryable.Value.GetEnumerator();
         }
 
-        public override Type ElementType
+        public virtual Type ElementType
         {
-            get { return _entityQueryable.ElementType; }
+            get { return _entityQueryable.Value.ElementType; }
         }
 
-        public override Expression Expression
+        public virtual Expression Expression
         {
-            get { return _entityQueryable.Expression; }
+            get { return _entityQueryable.Value.Expression; }
         }
 
-        public override IQueryProvider Provider
+        public virtual IQueryProvider Provider
         {
-            get { return _entityQueryable.Provider; }
+            get { return _entityQueryable.Value.Provider; }
         }
 
         IAsyncEnumerable<TEntity> IAsyncEnumerableAccessor<TEntity>.AsyncEnumerable
         {
-            get { return _entityQueryable; }
+            get { return _entityQueryable.Value; }
         }
     }
 }

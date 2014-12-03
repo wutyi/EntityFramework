@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Data.Entity.ChangeTracking;
 using Microsoft.Data.Entity.Identity;
 using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Framework.ConfigurationModel;
@@ -24,130 +25,91 @@ namespace Microsoft.Data.Entity.Tests
     public class DbContextTest
     {
         [Fact]
-        public void Members_check_arguments()
+        public void Each_context_gets_new_scoped_services()
         {
-            using (var context = new EarlyLearningCenter())
-            {
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.Throws<ArgumentNullException>(() => context.Add<Random>(null)).ParamName);
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.ThrowsAsync<ArgumentNullException>(() => context.AddAsync<Random>(null)).Result.ParamName);
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.Throws<ArgumentNullException>(
-                        () => context.AddAsync<Random>(null, new CancellationToken()).GetAwaiter().GetResult()).ParamName);
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.Throws<ArgumentNullException>(() => context.Update<Random>(null)).ParamName);
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.ThrowsAsync<ArgumentNullException>(() => context.UpdateAsync<Random>(null)).Result.ParamName);
-                Assert.Equal(
-                    "entity",
-                    // ReSharper disable once AssignNullToNotNullAttribute
-                    Assert.ThrowsAsync<ArgumentNullException>(() => context.UpdateAsync<Random>(null, new CancellationToken())).Result.ParamName);
-            }
-        }
+            var serviceProvider = TestHelpers.CreateServiceProvider();
 
-        [Fact]
-        public void Each_context_gets_new_scoped_context_configuration()
-        {
-            var services = new ServiceCollection();
-            services.AddEntityFramework();
-            var serviceProvider = services.BuildServiceProvider();
-
-            DbContextConfiguration configuration;
+            IServiceProvider contextServices;
             using (var context = new DbContext(serviceProvider))
             {
-                configuration = context.Configuration;
-                Assert.Same(configuration, context.Configuration);
+                contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                Assert.Same(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
 
             using (var context = new DbContext(serviceProvider))
             {
-                Assert.NotSame(configuration, context.Configuration);
+                Assert.NotSame(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
         }
 
         [Fact]
-        public void Each_context_gets_new_scoped_context_configuration_with_implicit_services()
+        public void Each_context_gets_new_scoped_services_with_implicit_services()
         {
-            DbContextConfiguration configuration;
+            IServiceProvider contextServices;
             using (var context = new Mock<DbContext> { CallBase = true }.Object)
             {
-                configuration = context.Configuration;
-                Assert.Same(configuration, context.Configuration);
+                contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                Assert.Same(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
 
             using (var context = new Mock<DbContext> { CallBase = true }.Object)
             {
-                Assert.NotSame(configuration, context.Configuration);
+                Assert.NotSame(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
         }
 
         [Fact]
-        public void Each_context_gets_new_scoped_context_configuration_with_explicit_config()
+        public void Each_context_gets_new_scoped_services_with_explicit_config()
         {
-            var services = new ServiceCollection();
-            services.AddEntityFramework();
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider();
 
             var options = new DbContextOptions();
 
-            DbContextConfiguration configuration;
+            IServiceProvider contextServices;
             using (var context = new DbContext(serviceProvider, options))
             {
-                configuration = context.Configuration;
-                Assert.Same(configuration, context.Configuration);
+                contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                Assert.Same(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
 
             using (var context = new DbContext(serviceProvider, options))
             {
-                Assert.NotSame(configuration, context.Configuration);
+                Assert.NotSame(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
         }
 
         [Fact]
-        public void Each_context_gets_new_scoped_context_configuration_with_implicit_services_and_explicit_config()
+        public void Each_context_gets_new_scoped_services_with_implicit_services_and_explicit_config()
         {
             var options = new DbContextOptions();
 
-            DbContextConfiguration configuration;
+            IServiceProvider contextServices;
             using (var context = new DbContext(options))
             {
-                configuration = context.Configuration;
-                Assert.Same(configuration, context.Configuration);
+                contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                Assert.Same(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
 
             using (var context = new DbContext(options))
             {
-                Assert.NotSame(configuration, context.Configuration);
+                Assert.NotSame(contextServices, ((IDbContextServices)context).ScopedServiceProvider);
             }
         }
 
         [Fact]
         public void SaveChanges_calls_DetectChanges()
         {
-            var services = new ServiceCollection();
-            services.AddEntityFramework()
-                .ServiceCollection
+            var services = new ServiceCollection()
                 .AddScoped<StateManager, FakeStateManager>()
                 .AddScoped<ChangeDetector, FakeChangeDetector>();
 
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider(services);
 
             var options = new DbContextOptions();
 
             using (var context = new DbContext(serviceProvider, options))
             {
-                var changeDetector = (FakeChangeDetector)context.Configuration.Services.ChangeDetector;
+                var changeDetector = (FakeChangeDetector)((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<ChangeDetector>();
 
                 Assert.False(changeDetector.DetectChangesCalled);
 
@@ -160,19 +122,17 @@ namespace Microsoft.Data.Entity.Tests
         [Fact]
         public void SaveChanges_calls_state_manager_SaveChanges()
         {
-            var services = new ServiceCollection();
-            services.AddEntityFramework()
-                .ServiceCollection
+            var services = new ServiceCollection()
                 .AddScoped<StateManager, FakeStateManager>()
                 .AddScoped<ChangeDetector, FakeChangeDetector>();
 
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider(services);
 
             var options = new DbContextOptions();
 
             using (var context = new DbContext(serviceProvider, options))
             {
-                var stateManager = (FakeStateManager)context.Configuration.StateManager;
+                var stateManager = (FakeStateManager)((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<StateManager>();
 
                 var entryMock = new Mock<StateEntry>();
                 entryMock.Setup(m => m.EntityState).Returns(EntityState.Modified);
@@ -189,19 +149,17 @@ namespace Microsoft.Data.Entity.Tests
         [Fact]
         public async Task SaveChangesAsync_calls_state_manager_SaveChangesAsync()
         {
-            var services = new ServiceCollection();
-            services.AddEntityFramework()
-                .ServiceCollection
+            var services = new ServiceCollection()
                 .AddScoped<StateManager, FakeStateManager>()
                 .AddScoped<ChangeDetector, FakeChangeDetector>();
 
-            var serviceProvider = services.BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider(services);
 
             var options = new DbContextOptions();
 
             using (var context = new DbContext(serviceProvider, options))
             {
-                var stateManager = (FakeStateManager)context.Configuration.StateManager;
+                var stateManager = (FakeStateManager)((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<StateManager>();
 
                 var entryMock = new Mock<StateEntry>();
                 entryMock.Setup(m => m.EntityState).Returns(EntityState.Modified);
@@ -260,11 +218,12 @@ namespace Microsoft.Data.Entity.Tests
         public void Can_add_new_entities_to_context_async()
         {
             TrackEntitiesTest((c, e) => c.AddAsync(e).Result, (c, e) => c.AddAsync(e).Result, EntityState.Added);
+        }
 
-            TrackEntitiesTest(
-                (c, e) => c.AddAsync(e, new CancellationToken()).Result,
-                (c, e) => c.AddAsync(e, new CancellationToken()).Result,
-                EntityState.Added);
+        [Fact]
+        public void Can_add_existing_entities_to_context_to_be_attached()
+        {
+            TrackEntitiesTest((c, e) => c.Attach(e), (c, e) => c.Attach(e), EntityState.Unchanged);
         }
 
         [Fact]
@@ -274,72 +233,368 @@ namespace Microsoft.Data.Entity.Tests
         }
 
         [Fact]
-        public void Can_add_existing_entities_to_context_to_be_updated_async()
-        {
-            TrackEntitiesTest((c, e) => c.UpdateAsync(e).Result, (c, e) => c.UpdateAsync(e).Result, EntityState.Modified);
-
-            TrackEntitiesTest(
-                (c, e) => c.UpdateAsync(e, new CancellationToken()).Result,
-                (c, e) => c.UpdateAsync(e, new CancellationToken()).Result,
-                EntityState.Modified);
-        }
-
-        [Fact]
         public void Can_add_existing_entities_to_context_to_be_deleted()
         {
-            TrackEntitiesTest((c, e) => c.Delete(e), (c, e) => c.Delete(e), EntityState.Deleted);
+            TrackEntitiesTest((c, e) => c.Remove(e), (c, e) => c.Remove(e), EntityState.Deleted);
         }
 
         private static void TrackEntitiesTest(
-            Func<DbContext, Category, Category> categoryAdder,
-            Func<DbContext, Product, Product> productAdder, EntityState expectedState)
+            Func<DbContext, Category, EntityEntry<Category>> categoryAdder,
+            Func<DbContext, Product, EntityEntry<Product>> productAdder, EntityState expectedState)
         {
-            using (var context = new EarlyLearningCenter())
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
             {
                 var category1 = new Category { Id = 1, Name = "Beverages" };
                 var category2 = new Category { Id = 2, Name = "Foods" };
                 var product1 = new Product { Id = 1, Name = "Marmite", Price = 7.99m };
                 var product2 = new Product { Id = 2, Name = "Bovril", Price = 4.99m };
 
-                Assert.Same(category1, categoryAdder(context, category1));
-                Assert.Same(category2, categoryAdder(context, category2));
-                Assert.Same(product1, productAdder(context, product1));
-                Assert.Same(product2, productAdder(context, product2));
+                var categoryEntry1 = categoryAdder(context, category1);
+                var categoryEntry2 = categoryAdder(context, category2);
+                var productEntry1 = productAdder(context, product1);
+                var productEntry2 = productAdder(context, product2);
 
-                var categoryEntry = context.ChangeTracker.Entry(category1);
-                Assert.Same(category1, categoryEntry.Entity);
-                Assert.Equal(expectedState, categoryEntry.State);
+                Assert.Same(category1, categoryEntry1.Entity);
+                Assert.Same(category2, categoryEntry2.Entity);
+                Assert.Same(product1, productEntry1.Entity);
+                Assert.Same(product2, productEntry2.Entity);
 
-                categoryEntry = context.ChangeTracker.Entry(category2);
-                Assert.Same(category2, categoryEntry.Entity);
-                Assert.Equal(expectedState, categoryEntry.State);
+                Assert.Same(category1, categoryEntry1.Entity);
+                Assert.Equal(expectedState, categoryEntry2.State);
+                Assert.Same(category2, categoryEntry2.Entity);
+                Assert.Equal(expectedState, categoryEntry2.State);
 
-                var productEntry = context.ChangeTracker.Entry(product1);
-                Assert.Same(product1, productEntry.Entity);
-                Assert.Equal(expectedState, productEntry.State);
+                Assert.Same(product1, productEntry1.Entity);
+                Assert.Equal(expectedState, productEntry1.State);
+                Assert.Same(product2, productEntry2.Entity);
+                Assert.Equal(expectedState, productEntry2.State);
 
-                productEntry = context.ChangeTracker.Entry(product2);
-                Assert.Same(product2, productEntry.Entity);
-                Assert.Equal(expectedState, productEntry.State);
+                Assert.Same(categoryEntry1.StateEntry, context.ChangeTracker.Entry(category1).StateEntry);
+                Assert.Same(categoryEntry2.StateEntry, context.ChangeTracker.Entry(category2).StateEntry);
+                Assert.Same(productEntry1.StateEntry, context.ChangeTracker.Entry(product1).StateEntry);
+                Assert.Same(productEntry2.StateEntry, context.ChangeTracker.Entry(product2).StateEntry);
+            }
+        }
+
+        [Fact]
+        public void Can_add_multiple_new_entities_to_context()
+        {
+            TrackMultipleEntitiesTest((c, e) => c.Add(e[0], e[1]), (c, e) => c.Add(e[0], e[1]), EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_multiple_new_entities_to_context_async()
+        {
+            TrackMultipleEntitiesTest((c, e) => c.AddAsync(e[0], e[1]).Result, (c, e) => c.AddAsync(e[0], e[1]).Result, EntityState.Added);
+
+            TrackMultipleEntitiesTest(
+                (c, e) => c.AddAsync(new[] { e[0], e[1] }, new CancellationToken()).Result, 
+                (c, e) => c.AddAsync(new[] { e[0], e[1] }, new CancellationToken()).Result, EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_attached()
+        {
+            TrackMultipleEntitiesTest((c, e) => c.Attach(e[0], e[1]), (c, e) => c.Attach(e[0], e[1]), EntityState.Unchanged);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_updated()
+        {
+            TrackMultipleEntitiesTest((c, e) => c.Update(e[0], e[1]), (c, e) => c.Update(e[0], e[1]), EntityState.Modified);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_deleted()
+        {
+            TrackMultipleEntitiesTest((c, e) => c.Remove(e[0], e[1]), (c, e) => c.Remove(e[0], e[1]), EntityState.Deleted);
+        }
+
+        private static void TrackMultipleEntitiesTest(
+            Func<DbContext, Category[], IReadOnlyList<EntityEntry<Category>>> categoryAdder,
+            Func<DbContext, Product[], IReadOnlyList<EntityEntry<Product>>> productAdder, EntityState expectedState)
+        {
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
+            {
+                var category1 = new Category { Id = 1, Name = "Beverages" };
+                var category2 = new Category { Id = 2, Name = "Foods" };
+                var product1 = new Product { Id = 1, Name = "Marmite", Price = 7.99m };
+                var product2 = new Product { Id = 2, Name = "Bovril", Price = 4.99m };
+
+                var categoryEntries = categoryAdder(context, new [] { category1, category2 });
+                var productEntries = productAdder(context, new[] { product1, product2 });
+
+                Assert.Equal(2, categoryEntries.Count);
+                Assert.Equal(2, productEntries.Count);
+
+                Assert.Same(category1, categoryEntries[0].Entity);
+                Assert.Same(category2, categoryEntries[1].Entity);
+                Assert.Same(product1, productEntries[0].Entity);
+                Assert.Same(product2, productEntries[1].Entity);
+
+                Assert.Same(category1, categoryEntries[0].Entity);
+                Assert.Equal(expectedState, categoryEntries[0].State);
+                Assert.Same(category2, categoryEntries[1].Entity);
+                Assert.Equal(expectedState, categoryEntries[1].State);
+
+                Assert.Same(product1, productEntries[0].Entity);
+                Assert.Equal(expectedState, productEntries[0].State);
+                Assert.Same(product2, productEntries[1].Entity);
+                Assert.Equal(expectedState, productEntries[1].State);
+
+                Assert.Same(categoryEntries[0].StateEntry, context.ChangeTracker.Entry(category1).StateEntry);
+                Assert.Same(categoryEntries[1].StateEntry, context.ChangeTracker.Entry(category2).StateEntry);
+                Assert.Same(productEntries[0].StateEntry, context.ChangeTracker.Entry(product1).StateEntry);
+                Assert.Same(productEntries[1].StateEntry, context.ChangeTracker.Entry(product2).StateEntry);
+            }
+        }
+
+        [Fact]
+        public void Can_add_no_new_entities_to_context()
+        {
+            TrackNoEntitiesTest(c => c.Add(new Category[0]), c => c.Add(new Product[0]), EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_no_new_entities_to_context_async()
+        {
+            TrackNoEntitiesTest(c => c.AddAsync(new Category[0]).Result, c => c.AddAsync(new Product[0]).Result, EntityState.Added);
+
+            TrackNoEntitiesTest(
+                c => c.AddAsync(new Category[0], new CancellationToken()).Result, 
+                c => c.AddAsync(new Product[0], new CancellationToken()).Result, EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_attached()
+        {
+            TrackNoEntitiesTest(c => c.Attach(new Category[0]), c => c.Attach(new Product[0]), EntityState.Unchanged);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_updated()
+        {
+            TrackNoEntitiesTest(c => c.Update(new Category[0]), c => c.Update(new Product[0]), EntityState.Modified);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_deleted()
+        {
+            TrackNoEntitiesTest(c => c.Remove(new Category[0]), c => c.Remove(new Product[0]), EntityState.Deleted);
+        }
+
+        private static void TrackNoEntitiesTest(
+            Func<DbContext, IReadOnlyList<EntityEntry<Category>>> categoryAdder,
+            Func<DbContext, IReadOnlyList<EntityEntry<Product>>> productAdder, EntityState expectedState)
+        {
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
+            {
+                Assert.Empty(categoryAdder(context));
+                Assert.Empty(productAdder(context));
+            }
+        }
+
+        [Fact]
+        public void Can_add_new_entities_to_context_non_generic()
+        {
+            TrackEntitiesTestNonGeneric((c, e) => c.Add(e), (c, e) => c.Add(e), EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_new_entities_to_context_async_non_generic()
+        {
+            TrackEntitiesTestNonGeneric((c, e) => c.AddAsync(e).Result, (c, e) => c.AddAsync(e).Result, EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_existing_entities_to_context_to_be_attached_non_generic()
+        {
+            TrackEntitiesTestNonGeneric((c, e) => c.Attach(e), (c, e) => c.Attach(e), EntityState.Unchanged);
+        }
+
+        [Fact]
+        public void Can_add_existing_entities_to_context_to_be_updated_non_generic()
+        {
+            TrackEntitiesTestNonGeneric((c, e) => c.Update(e), (c, e) => c.Update(e), EntityState.Modified);
+        }
+
+        [Fact]
+        public void Can_add_existing_entities_to_context_to_be_deleted_non_generic()
+        {
+            TrackEntitiesTestNonGeneric((c, e) => c.Remove(e), (c, e) => c.Remove(e), EntityState.Deleted);
+        }
+
+        private static void TrackEntitiesTestNonGeneric(
+            Func<DbContext, object, EntityEntry> categoryAdder,
+            Func<DbContext, object, EntityEntry> productAdder, EntityState expectedState)
+        {
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
+            {
+                var category1 = new Category { Id = 1, Name = "Beverages" };
+                var category2 = new Category { Id = 2, Name = "Foods" };
+                var product1 = new Product { Id = 1, Name = "Marmite", Price = 7.99m };
+                var product2 = new Product { Id = 2, Name = "Bovril", Price = 4.99m };
+
+                var categoryEntry1 = categoryAdder(context, category1);
+                var categoryEntry2 = categoryAdder(context, category2);
+                var productEntry1 = productAdder(context, product1);
+                var productEntry2 = productAdder(context, product2);
+
+                Assert.Same(category1, categoryEntry1.Entity);
+                Assert.Same(category2, categoryEntry2.Entity);
+                Assert.Same(product1, productEntry1.Entity);
+                Assert.Same(product2, productEntry2.Entity);
+
+                Assert.Same(category1, categoryEntry1.Entity);
+                Assert.Equal(expectedState, categoryEntry2.State);
+                Assert.Same(category2, categoryEntry2.Entity);
+                Assert.Equal(expectedState, categoryEntry2.State);
+
+                Assert.Same(product1, productEntry1.Entity);
+                Assert.Equal(expectedState, productEntry1.State);
+                Assert.Same(product2, productEntry2.Entity);
+                Assert.Equal(expectedState, productEntry2.State);
+
+                Assert.Same(categoryEntry1.StateEntry, context.ChangeTracker.Entry(category1).StateEntry);
+                Assert.Same(categoryEntry2.StateEntry, context.ChangeTracker.Entry(category2).StateEntry);
+                Assert.Same(productEntry1.StateEntry, context.ChangeTracker.Entry(product1).StateEntry);
+                Assert.Same(productEntry2.StateEntry, context.ChangeTracker.Entry(product2).StateEntry);
+            }
+        }
+
+        [Fact]
+        public void Can_add_multiple_new_entities_to_context_non_generic()
+        {
+            TrackMultipleEntitiesTestNonGeneric((c, e) => c.Add(e[0], e[1]), (c, e) => c.Add(e[0], e[1]), EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_multiple_new_entities_to_context_async_non_generic()
+        {
+            TrackMultipleEntitiesTestNonGeneric((c, e) => c.AddAsync(e[0], e[1]).Result, (c, e) => c.AddAsync(e[0], e[1]).Result, EntityState.Added);
+
+            TrackMultipleEntitiesTestNonGeneric(
+                (c, e) => c.AddAsync(new[] { e[0], e[1] }, new CancellationToken()).Result, 
+                (c, e) => c.AddAsync(new[] { e[0], e[1] }, new CancellationToken()).Result, EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_attached_non_generic()
+        {
+            TrackMultipleEntitiesTestNonGeneric((c, e) => c.Attach(e[0], e[1]), (c, e) => c.Attach(e[0], e[1]), EntityState.Unchanged);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_updated_non_generic()
+        {
+            TrackMultipleEntitiesTestNonGeneric((c, e) => c.Update(e[0], e[1]), (c, e) => c.Update(e[0], e[1]), EntityState.Modified);
+        }
+
+        [Fact]
+        public void Can_add_multiple_existing_entities_to_context_to_be_deleted_non_generic()
+        {
+            TrackMultipleEntitiesTestNonGeneric((c, e) => c.Remove(e[0], e[1]), (c, e) => c.Remove(e[0], e[1]), EntityState.Deleted);
+        }
+
+        private static void TrackMultipleEntitiesTestNonGeneric(
+            Func<DbContext, object[], IReadOnlyList<EntityEntry>> categoryAdder,
+            Func<DbContext, object[], IReadOnlyList<EntityEntry>> productAdder, EntityState expectedState)
+        {
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
+            {
+                var category1 = new Category { Id = 1, Name = "Beverages" };
+                var category2 = new Category { Id = 2, Name = "Foods" };
+                var product1 = new Product { Id = 1, Name = "Marmite", Price = 7.99m };
+                var product2 = new Product { Id = 2, Name = "Bovril", Price = 4.99m };
+
+                var categoryEntries = categoryAdder(context, new[] { category1, category2 });
+                var productEntries = productAdder(context, new[] { product1, product2 });
+
+                Assert.Equal(2, categoryEntries.Count);
+                Assert.Equal(2, productEntries.Count);
+
+                Assert.Same(category1, categoryEntries[0].Entity);
+                Assert.Same(category2, categoryEntries[1].Entity);
+                Assert.Same(product1, productEntries[0].Entity);
+                Assert.Same(product2, productEntries[1].Entity);
+
+                Assert.Same(category1, categoryEntries[0].Entity);
+                Assert.Equal(expectedState, categoryEntries[0].State);
+                Assert.Same(category2, categoryEntries[1].Entity);
+                Assert.Equal(expectedState, categoryEntries[1].State);
+
+                Assert.Same(product1, productEntries[0].Entity);
+                Assert.Equal(expectedState, productEntries[0].State);
+                Assert.Same(product2, productEntries[1].Entity);
+                Assert.Equal(expectedState, productEntries[1].State);
+
+                Assert.Same(categoryEntries[0].StateEntry, context.ChangeTracker.Entry(category1).StateEntry);
+                Assert.Same(categoryEntries[1].StateEntry, context.ChangeTracker.Entry(category2).StateEntry);
+                Assert.Same(productEntries[0].StateEntry, context.ChangeTracker.Entry(product1).StateEntry);
+                Assert.Same(productEntries[1].StateEntry, context.ChangeTracker.Entry(product2).StateEntry);
+            }
+        }
+
+        [Fact]
+        public void Can_add_no_new_entities_to_context_non_generic()
+        {
+            TrackNoEntitiesTestNonGeneric(c => c.Add(), c => c.Add(), EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_no_new_entities_to_context_async_non_generic()
+        {
+            TrackNoEntitiesTestNonGeneric(c => c.AddAsync().Result, c => c.AddAsync().Result, EntityState.Added);
+
+            TrackNoEntitiesTestNonGeneric(
+                c => c.AddAsync(new object[0], new CancellationToken()).Result, 
+                c => c.AddAsync(new object[0], new CancellationToken()).Result, EntityState.Added);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_attached_non_generic()
+        {
+            TrackNoEntitiesTestNonGeneric(c => c.Attach(), c => c.Attach(), EntityState.Unchanged);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_updated_non_generic()
+        {
+            TrackNoEntitiesTestNonGeneric(c => c.Update(), c => c.Update(), EntityState.Modified);
+        }
+
+        [Fact]
+        public void Can_add_no_existing_entities_to_context_to_be_deleted_non_generic()
+        {
+            TrackNoEntitiesTestNonGeneric(c => c.Remove(), c => c.Remove(), EntityState.Deleted);
+        }
+
+        private static void TrackNoEntitiesTestNonGeneric(
+            Func<DbContext, IReadOnlyList<EntityEntry>> categoryAdder,
+            Func<DbContext, IReadOnlyList<EntityEntry>> productAdder, EntityState expectedState)
+        {
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
+            {
+                Assert.Empty(categoryAdder(context));
+                Assert.Empty(productAdder(context));
             }
         }
 
         [Fact]
         public void Can_add_new_entities_to_context_with_key_generation()
         {
-            TrackEntitiesWithKeyGenerationTest((c, e) => c.Add(e));
+            TrackEntitiesWithKeyGenerationTest((c, e) => c.Add(e).Entity);
         }
 
         [Fact]
         public void Can_add_new_entities_to_context_with_key_generation_async()
         {
-            TrackEntitiesWithKeyGenerationTest((c, e) => c.AddAsync(e).Result);
-            TrackEntitiesWithKeyGenerationTest((c, e) => c.AddAsync(e, new CancellationToken()).Result);
+            TrackEntitiesWithKeyGenerationTest((c, e) => c.AddAsync(e).Result.Entity);
         }
 
         private static void TrackEntitiesWithKeyGenerationTest(Func<DbContext, TheGu, TheGu> adder)
         {
-            using (var context = new EarlyLearningCenter())
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
             {
                 var gu1 = new TheGu { ShirtColor = "Red" };
                 var gu2 = new TheGu { ShirtColor = "Still Red" };
@@ -363,7 +618,7 @@ namespace Microsoft.Data.Entity.Tests
         [Fact]
         public void Context_can_build_model_using_DbSet_properties()
         {
-            using (var context = new EarlyLearningCenter())
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider()))
             {
                 Assert.Equal(
                     new[] { typeof(Category).FullName, typeof(Product).FullName, typeof(TheGu).FullName },
@@ -397,7 +652,7 @@ namespace Microsoft.Data.Entity.Tests
 
             var options = new DbContextOptions().UseModel(model);
 
-            using (var context = new EarlyLearningCenter(options))
+            using (var context = new EarlyLearningCenter(TestHelpers.CreateServiceProvider(), options))
             {
                 Assert.Equal(
                     new[] { typeof(TheGu).FullName },
@@ -433,19 +688,6 @@ namespace Microsoft.Data.Entity.Tests
             public DbSet<TheGu> GetGus()
             {
                 return Gus;
-            }
-        }
-
-        [Fact]
-        public void Set_and_non_generic_set_always_return_same_instance_returns_a_new_DbSet_for_the_given_type()
-        {
-            using (var context = new ContextWithSets())
-            {
-                var set = context.Set<Product>();
-                Assert.NotNull(set);
-                Assert.Same(set, context.Set<Product>());
-                Assert.Same(set, context.Set(typeof(Product)));
-                Assert.Same(set, context.Products);
             }
         }
 
@@ -580,11 +822,9 @@ namespace Microsoft.Data.Entity.Tests
         {
             using (var context = new EarlyLearningCenter())
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.IsType<EntityKeyFactorySource>(configuration.Services.EntityKeyFactorySource);
-                Assert.IsType<ClrPropertyGetterSource>(configuration.Services.ClrPropertyGetterSource);
-                Assert.IsType<ClrPropertySetterSource>(configuration.Services.ClrPropertySetterSource);
+                Assert.IsType<EntityKeyFactorySource>(contextServices.GetRequiredService<EntityKeyFactorySource>());
             }
         }
 
@@ -593,13 +833,9 @@ namespace Microsoft.Data.Entity.Tests
         {
             using (var context = new EarlyLearningCenter())
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.IsType<StateEntryFactory>(configuration.Services.StateEntryFactory);
-                Assert.IsType<StateEntryNotifier>(configuration.Services.StateEntryNotifier);
-                Assert.IsType<ContextSets>(configuration.Services.ContextSets);
-                Assert.IsType<StateManager>(configuration.Services.StateManager);
-                Assert.IsType<NavigationFixer>(configuration.Services.EntityStateListeners.Single());
+                Assert.IsType<StateEntryFactory>(contextServices.GetRequiredService<StateEntryFactory>());
             }
         }
 
@@ -608,9 +844,9 @@ namespace Microsoft.Data.Entity.Tests
         {
             using (var context = new EarlyLearningCenter())
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.IsType<StateManager>(configuration.Services.StateManager);
+                Assert.IsType<StateManager>(contextServices.GetRequiredService<StateManager>());
             }
         }
 
@@ -620,7 +856,7 @@ namespace Microsoft.Data.Entity.Tests
             var factory = Mock.Of<OriginalValuesFactory>();
             var serviceCollection = new ServiceCollection()
                 .AddSingleton<DbSetFinder>()
-                .AddSingleton<DbSetInitializer>()
+                .AddSingleton<DbSetSource>()
                 .AddSingleton<ClrPropertyGetterSource>()
                 .AddSingleton<ClrPropertySetterSource>()
                 .AddSingleton<ClrCollectionAccessorSource>()
@@ -628,17 +864,17 @@ namespace Microsoft.Data.Entity.Tests
                 .AddSingleton<MemberMapper>()
                 .AddSingleton<FieldMatcher>()
                 .AddSingleton<DataStoreSelector>()
-                .AddScoped<DbContextConfiguration>()
-                .AddScoped<ContextSets>()
+                .AddScoped<DbSetInitializer>()
+                .AddScoped<DbContextServices>()
                 .AddInstance(factory);
 
             var provider = serviceCollection.BuildServiceProvider();
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.Same(factory, configuration.Services.OriginalValuesFactory);
+                Assert.Same(factory, contextServices.GetRequiredService<OriginalValuesFactory>());
             }
         }
 
@@ -650,9 +886,9 @@ namespace Microsoft.Data.Entity.Tests
 
             var provider = serviceCollection.BuildServiceProvider();
 
-            Assert.IsType<LoggerFactory>(provider.GetService<ILoggerFactory>());
-            Assert.IsType<TypeActivator>(provider.GetService<ITypeActivator>());
-            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetService<IOptions<DbContextOptions>>());
+            Assert.IsType<LoggerFactory>(provider.GetRequiredService<ILoggerFactory>());
+            Assert.IsType<TypeActivator>(provider.GetRequiredService<ITypeActivator>());
+            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetRequiredService<IOptions<DbContextOptions>>());
         }
 
         [Fact]
@@ -666,14 +902,14 @@ namespace Microsoft.Data.Entity.Tests
             serviceCollection
                 .AddInstance<ILoggerFactory>(loggerFactory)
                 .AddInstance<ITypeActivator>(typeActivator)
-                .Add(OptionsServices.GetDefaultServices())
+                .AddOptions()
                 .AddEntityFramework();
 
             var provider = serviceCollection.BuildServiceProvider();
 
-            Assert.Same(loggerFactory, provider.GetService<ILoggerFactory>());
-            Assert.Same(typeActivator, provider.GetService<ITypeActivator>());
-            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetService<IOptions<DbContextOptions>>());
+            Assert.Same(loggerFactory, provider.GetRequiredService<ILoggerFactory>());
+            Assert.Same(typeActivator, provider.GetRequiredService<ITypeActivator>());
+            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetRequiredService<IOptions<DbContextOptions>>());
         }
 
         [Fact]
@@ -690,13 +926,13 @@ namespace Microsoft.Data.Entity.Tests
             serviceCollection
                 .AddInstance<ILoggerFactory>(loggerFactory)
                 .AddInstance<ITypeActivator>(typeActivator)
-                .Add(OptionsServices.GetDefaultServices());
+                .AddOptions();
 
             var provider = serviceCollection.BuildServiceProvider();
 
-            Assert.Same(loggerFactory, provider.GetService<ILoggerFactory>());
-            Assert.Same(typeActivator, provider.GetService<ITypeActivator>());
-            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetService<IOptions<DbContextOptions>>());
+            Assert.Same(loggerFactory, provider.GetRequiredService<ILoggerFactory>());
+            Assert.Same(typeActivator, provider.GetRequiredService<ITypeActivator>());
+            Assert.IsType<OptionsManager<DbContextOptions>>(provider.GetRequiredService<IOptions<DbContextOptions>>());
         }
 
         [Fact]
@@ -711,9 +947,9 @@ namespace Microsoft.Data.Entity.Tests
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.Same(factory, configuration.Services.OriginalValuesFactory);
+                Assert.Same(factory, contextServices.GetRequiredService<OriginalValuesFactory>());
             }
         }
 
@@ -722,53 +958,48 @@ namespace Microsoft.Data.Entity.Tests
         {
             var modelSource = Mock.Of<IModelSource>();
 
-            var services = new ServiceCollection();
-            services
-                .AddEntityFramework().ServiceCollection
+            var services = new ServiceCollection()
                 .AddInstance(modelSource);
 
-            var provider = services.BuildServiceProvider();
+            var provider = TestHelpers.CreateServiceProvider(services);
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.Same(modelSource, configuration.Services.ModelSource);
+                Assert.Same(modelSource, contextServices.GetRequiredService<IModelSource>());
             }
         }
 
         [Fact]
         public void Can_set_known_singleton_services_using_type_activation()
         {
-            var services = new ServiceCollection();
-            services
-                .AddEntityFramework().ServiceCollection
+            var services = new ServiceCollection()
                 .AddSingleton<IModelSource, FakeModelSource>();
 
-            var provider = services.BuildServiceProvider();
+            var provider = TestHelpers.CreateServiceProvider(services);
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var configuration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.IsType<FakeModelSource>(configuration.Services.ModelSource);
+                Assert.IsType<FakeModelSource>(contextServices.GetRequiredService<IModelSource>());
             }
         }
 
         [Fact]
         public void Can_set_known_context_scoped_services_using_type_activation()
         {
-            var services = new ServiceCollection();
-            services
-                .AddEntityFramework().ServiceCollection
+            var services = new ServiceCollection()
                 .AddScoped<StateManager, FakeStateManager>();
 
-            var provider = services.BuildServiceProvider();
+            var provider = TestHelpers.CreateServiceProvider(services);
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var contextConfiguration = context.Configuration;
-                Assert.IsType<FakeStateManager>(contextConfiguration.Services.StateManager);
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+
+                Assert.IsType<FakeStateManager>(contextServices.GetRequiredService<StateManager>());
             }
         }
 
@@ -784,29 +1015,29 @@ namespace Microsoft.Data.Entity.Tests
             var provider = services.BuildServiceProvider();
 
             var context = new EarlyLearningCenter(provider);
-            var configuration = context.Configuration;
+            var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-            var modelSource = configuration.Services.ModelSource;
-
-            context.Dispose();
-
-            context = new EarlyLearningCenter(provider);
-            configuration = context.Configuration;
-
-            var stateManager = configuration.Services.StateManager;
-
-            Assert.Same(stateManager, configuration.Services.StateManager);
-
-            Assert.Same(modelSource, configuration.Services.ModelSource);
+            var modelSource = contextServices.GetRequiredService<IModelSource>();
 
             context.Dispose();
 
             context = new EarlyLearningCenter(provider);
-            configuration = context.Configuration;
+            contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-            Assert.NotSame(stateManager, configuration.Services.StateManager);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
-            Assert.Same(modelSource, configuration.Services.ModelSource);
+            Assert.Same(stateManager, contextServices.GetRequiredService<StateManager>());
+
+            Assert.Same(modelSource, contextServices.GetRequiredService<IModelSource>());
+
+            context.Dispose();
+
+            context = new EarlyLearningCenter(provider);
+            contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+
+            Assert.NotSame(stateManager, contextServices.GetRequiredService<StateManager>());
+
+            Assert.Same(modelSource, contextServices.GetRequiredService<IModelSource>());
 
             context.Dispose();
         }
@@ -821,9 +1052,9 @@ namespace Microsoft.Data.Entity.Tests
 
             using (var context = new EarlyLearningCenter(provider))
             {
-                var contextConfiguration = context.Configuration;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
 
-                Assert.IsType<FakeEntityMaterializerSource>(contextConfiguration.Services.ServiceProvider.GetService<EntityMaterializerSource>());
+                Assert.IsType<FakeEntityMaterializerSource>(contextServices.GetRequiredService<EntityMaterializerSource>());
             }
         }
 
@@ -857,11 +1088,6 @@ namespace Microsoft.Data.Entity.Tests
             {
             }
 
-            public EarlyLearningCenter(DbContextOptions options)
-                : base(options)
-            {
-            }
-
             public EarlyLearningCenter(IServiceProvider serviceProvider, DbContextOptions options)
                 : base(serviceProvider, options)
             {
@@ -876,7 +1102,6 @@ namespace Microsoft.Data.Entity.Tests
                 options.UseInMemoryStore(persist: false);
             }
         }
-
 
         private class FakeEntityMaterializerSource : EntityMaterializerSource
         {
@@ -909,17 +1134,19 @@ namespace Microsoft.Data.Entity.Tests
 
             services
                 .AddSingleton<FakeService>()
-                .Add(OptionsServices.GetDefaultServices())
+                .AddOptions()
                 .AddEntityFramework()
                 .AddDbContext<ContextWithDefaults>();
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextWithDefaults>())
+            using (var context = serviceProvider.GetRequiredService<ContextWithDefaults>())
             {
-                Assert.NotNull(serviceProvider.GetService<FakeService>());
-                Assert.NotSame(serviceProvider, context.Configuration.Services.ServiceProvider);
-                Assert.Equal(0, ((IDbContextOptions)context.Configuration.ContextOptions).Extensions.Count);
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+
+                Assert.NotNull(serviceProvider.GetRequiredService<FakeService>());
+                Assert.NotSame(serviceProvider, contextServices);
+                Assert.Equal(0, contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service.Extensions.Count);
             }
         }
 
@@ -936,11 +1163,14 @@ namespace Microsoft.Data.Entity.Tests
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextWithDefaults>())
+            using (var context = serviceProvider.GetRequiredService<ContextWithDefaults>())
             {
-                Assert.NotNull(context.Configuration.Services.ServiceProvider.GetService<FakeService>());
-                Assert.Equal(1, context.Configuration.ContextOptions.Extensions.Count);
-                Assert.Same(contextOptionsExtension, context.Configuration.ContextOptions.Extensions[0]);
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service;
+
+                Assert.NotNull(contextServices.GetRequiredService<FakeService>());
+                Assert.Equal(1, options.Extensions.Count);
+                Assert.Same(contextOptionsExtension, options.Extensions[0]);
             }
         }
 
@@ -957,11 +1187,14 @@ namespace Microsoft.Data.Entity.Tests
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextWithServiceProvider>())
+            using (var context = serviceProvider.GetRequiredService<ContextWithServiceProvider>())
             {
-                Assert.NotNull(context.Configuration.Services.ServiceProvider.GetService<FakeService>());
-                Assert.Equal(1, context.Configuration.ContextOptions.Extensions.Count);
-                Assert.Same(contextOptionsExtension, context.Configuration.ContextOptions.Extensions[0]);
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service;
+
+                Assert.NotNull(contextServices.GetRequiredService<FakeService>());
+                Assert.Equal(1, options.Extensions.Count);
+                Assert.Same(contextOptionsExtension, options.Extensions[0]);
             }
         }
 
@@ -978,11 +1211,14 @@ namespace Microsoft.Data.Entity.Tests
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextWithOptions>())
+            using (var context = serviceProvider.GetRequiredService<ContextWithOptions>())
             {
-                Assert.NotNull(context.Configuration.Services.ServiceProvider.GetService<FakeService>());
-                Assert.Equal(1, context.Configuration.ContextOptions.Extensions.Count);
-                Assert.Same(contextOptionsExtension, context.Configuration.ContextOptions.Extensions[0]);
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service;
+
+                Assert.NotNull(contextServices.GetRequiredService<FakeService>());
+                Assert.Equal(1, options.Extensions.Count);
+                Assert.Same(contextOptionsExtension, options.Extensions[0]);
             }
         }
 
@@ -1020,16 +1256,17 @@ namespace Microsoft.Data.Entity.Tests
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextT>())
+            using (var context = serviceProvider.GetRequiredService<ContextT>())
             {
-                var contextOptions = context.Configuration.ContextOptions as DbContextOptions<ContextT>;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var contextOptions = (DbContextOptions<ContextT>)contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service;
 
                 Assert.NotNull(contextOptions);
                 var rawOptions = ((IDbContextOptions)contextOptions).RawOptions;
                 Assert.Equal(1, rawOptions.Count);
                 Assert.Equal("MyConnectionString", rawOptions["ConnectionString"]);
-                Assert.Equal(1, context.Configuration.ContextOptions.Extensions.Count);
-                Assert.Same(contextOptionsExtension, context.Configuration.ContextOptions.Extensions[0]);
+                Assert.Equal(1, ((IDbContextOptions)contextOptions).Extensions.Count);
+                Assert.Same(contextOptionsExtension, ((IDbContextOptions)contextOptions).Extensions[0]);
             }
         }
 
@@ -1051,9 +1288,10 @@ namespace Microsoft.Data.Entity.Tests
 
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<ContextWithDefaults>())
+            using (var context = serviceProvider.GetRequiredService<ContextWithDefaults>())
             {
-                var contextOptions = context.Configuration.ContextOptions as DbContextOptions<ContextWithDefaults>;
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var contextOptions = (DbContextOptions<ContextWithDefaults>)contextServices.GetRequiredService<DbContextService<IDbContextOptions>>().Service;
 
                 Assert.NotNull(contextOptions);
                 var rawOptions = ((IDbContextOptions)contextOptions).RawOptions;
@@ -1099,6 +1337,39 @@ namespace Microsoft.Data.Entity.Tests
         }
 
         [Fact]
+        public void Model_cannot_be_used_in_OnModelCreating()
+        {
+            var serviceProvider = new ServiceCollection()
+                .AddEntityFramework()
+                .AddInMemoryStore()
+                .AddDbContext<UseModelInOnModelCreatingContext>()
+                .ServiceCollection
+                .BuildServiceProvider();
+
+            using (var context = serviceProvider.GetRequiredService<UseModelInOnModelCreatingContext>())
+            {
+                Assert.Equal(
+                    Strings.RecursiveOnModelCreating,
+                    Assert.Throws<InvalidOperationException>(() => context.Model).Message);
+            }
+        }
+
+        private class UseModelInOnModelCreatingContext : DbContext
+        {
+            public UseModelInOnModelCreatingContext(IServiceProvider serviceProvider)
+                : base(serviceProvider)
+            {
+            }
+
+            public DbSet<Product> Products { get; set; }
+
+            protected internal override void OnModelCreating(ModelBuilder modelBuilder)
+            {
+                var _ = Model;
+            }
+        }
+
+        [Fact]
         public void Context_cannot_be_used_in_OnModelCreating()
         {
             var serviceProvider = new ServiceCollection()
@@ -1108,7 +1379,7 @@ namespace Microsoft.Data.Entity.Tests
                 .ServiceCollection
                 .BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<UseInOnModelCreatingContext>())
+            using (var context = serviceProvider.GetRequiredService<UseInOnModelCreatingContext>())
             {
                 Assert.Equal(
                     Strings.RecursiveOnModelCreating,
@@ -1141,7 +1412,7 @@ namespace Microsoft.Data.Entity.Tests
                 .ServiceCollection
                 .BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<UseInOnConfiguringContext>())
+            using (var context = serviceProvider.GetRequiredService<UseInOnConfiguringContext>())
             {
                 Assert.Equal(
                     Strings.RecursiveOnConfiguring,

@@ -74,7 +74,6 @@
     <Compile Include="ChangeTracking\RelationshipsSnapshotTest.cs" />
     <Compile Include="ChangeTracking\SimpleNullableEntityKeyFactoryTest.cs" />
     <Compile Include="ContextConfigurationTest.cs" />
-    <Compile Include="ContextSetsTest.cs" />
     <Compile Include="DatabaseTest.cs" />
     <Compile Include="DbContextOptionsParserTest.cs" />
     <Compile Include="DbContextTest.cs" />
@@ -84,6 +83,7 @@
     <Compile Include="DefaultModelSourceTest.cs" />
     <Compile Include="DbContextOptionsTest.cs" />
     <Compile Include="EntitySetFinderTest.cs" />
+    <Compile Include="Extensions\EntityServiceCollectionExtensionsTest.cs" />
     <Compile Include="Extensions\ServiceProviderExtensionsTest.cs" />
     <Compile Include="Extensions\TaskExtensionsTest.cs" />
     <Compile Include="Identity\ForeignKeyValuePropagatorTest.cs" />
@@ -156,12 +156,10 @@
     <Compile Include="Metadata\ModelConventions\PropertiesConventionTest.cs" />
     <Compile Include="Query\TaskResultAsyncEnumerableTest.cs" />
     <Compile Include="Storage\DataStoreSelectorTest.cs" />
-    <Compile Include="Utilities\BidirectionalAdjacencyListGraphFactoryTest.cs" />
     <Compile Include="Utilities\BidirectionalAdjacencyListGraphTest.cs" />
     <Compile Include="Utilities\CheckTest.cs" />
     <Compile Include="Utilities\EnumerableExtensionsTest.cs" />
     <Compile Include="Utilities\ExpressionExtensionsTest.cs" />
-    <Compile Include="Utilities\GraphTest.cs" />
     <Compile Include="Utilities\IndentedStringBuilderTest.cs" />
     <Compile Include="Utilities\LazyRefTest.cs" />
     <Compile Include="Utilities\PropertyInfoExtensionsTest.cs" />

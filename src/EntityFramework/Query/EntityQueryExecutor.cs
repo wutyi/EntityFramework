@@ -9,6 +9,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.Logging;
@@ -18,17 +20,22 @@ namespace Microsoft.Data.Entity.Query
 {
     public class EntityQueryExecutor : IQueryExecutor
     {
-        private readonly DbContext _context;
+        private readonly DbContextService<DbContext> _context;
+        private readonly DbContextService<DataStore> _dataStore;
         private readonly LazyRef<ILogger> _logger;
 
-        // TODO: Currently using a LazyRef here while other parts of the fix for Issue #641 are in progress.
-        public EntityQueryExecutor([NotNull] DbContext context, [NotNull] LazyRef<ILoggerFactory> loggerFactory)
+        public EntityQueryExecutor(
+            [NotNull] DbContextService<DbContext> context,
+            [NotNull] DbContextService<DataStore> dataStore,
+            [NotNull] ILoggerFactory loggerFactory)
         {
             Check.NotNull(context, "context");
+            Check.NotNull(dataStore, "dataStore");
             Check.NotNull(loggerFactory, "loggerFactory");
 
             _context = context;
-            _logger = new LazyRef<ILogger>(() => loggerFactory.Value.Create<EntityQueryExecutor>());
+            _dataStore = dataStore;
+            _logger = new LazyRef<ILogger>(loggerFactory.Create<EntityQueryExecutor>);
         }
 
         public virtual T ExecuteScalar<T>([NotNull] QueryModel queryModel)
@@ -70,14 +77,14 @@ namespace Microsoft.Data.Entity.Query
 
             try
             {
-                var enumerable = _context.Configuration.DataStore.Query<T>(queryModel);
+                var enumerable = _dataStore.Service.Query<T>(queryModel);
 
-                return new EnumerableExceptionInterceptor<T>(enumerable, _context, _logger);
+                return new EnumerableExceptionInterceptor<T>(enumerable, _context.Service, _logger);
             }
             catch (Exception ex)
             {
                 _logger.Value.WriteError(
-                    new DataStoreErrorLogState(_context.GetType()),
+                    new DataStoreErrorLogState(_context.Service.GetType()),
                     ex,
                     (state, exception) =>
                         Strings.LogExceptionDuringQueryIteration(Environment.NewLine, exception));
@@ -97,15 +104,15 @@ namespace Microsoft.Data.Entity.Query
             try
             {
                 var asyncEnumerable
-                    = _context.Configuration.DataStore
+                    = _dataStore.Service
                         .AsyncQuery<T>(queryModel, cancellationToken);
 
-                return new AsyncEnumerableExceptionInterceptor<T>(asyncEnumerable, _context, _logger);
+                return new AsyncEnumerableExceptionInterceptor<T>(asyncEnumerable, _context.Service, _logger);
             }
             catch (Exception ex)
             {
                 _logger.Value.WriteError(
-                    new DataStoreErrorLogState(_context.GetType()),
+                    new DataStoreErrorLogState(_context.Service.GetType()),
                     ex,
                     (state, exception) =>
                         Strings.LogExceptionDuringQueryIteration(Environment.NewLine, exception));

@@ -4,17 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Data.Common;
-using System.Data.SqlClient;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Relational;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Tests;
-using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.DependencyInjection.Fallback;
 using Microsoft.Framework.Logging;
 using Xunit;
 
@@ -193,10 +191,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Multiple_threads_can_use_the_same_generator()
         {
-            var serviceProvider = new ServiceCollection()
-                .AddEntityFramework()
-                .AddSqlServer().ServiceCollection
-                .BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider();
 
             var property = _model.GetEntityType(typeof(AnEntity)).GetProperty("Long");
 
@@ -213,16 +208,16 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
                 var testNumber = i;
                 generatedValues[testNumber] = new List<long>();
                 tests[testNumber] = () =>
+                {
+                    for (var j = 0; j < valueCount; j++)
                     {
-                        for (var j = 0; j < valueCount; j++)
-                        {
-                            var storeServices = CreateStoreServices(serviceProvider);
+                        var storeServices = CreateStoreServices(serviceProvider);
 
-                            var generatedValue = generator.Next(property, storeServices);
+                        var generatedValue = generator.Next(property, storeServices);
 
-                            generatedValues[testNumber].Add((long)generatedValue.Value);
-                        }
-                    };
+                        generatedValues[testNumber].Add((long)generatedValue.Value);
+                    }
+                };
             }
 
             Parallel.Invoke(tests);
@@ -244,10 +239,7 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public async Task Multiple_threads_can_use_the_same_generator_async()
         {
-            var serviceProvider = new ServiceCollection()
-                .AddEntityFramework()
-                .AddSqlServer().ServiceCollection
-                .BuildServiceProvider();
+            var serviceProvider = TestHelpers.CreateServiceProvider();
 
             var property = _model.GetEntityType(typeof(AnEntity)).GetProperty("Long");
 
@@ -264,16 +256,16 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
                 var testNumber = i;
                 generatedValues[testNumber] = new List<long>();
                 tests[testNumber] = async () =>
+                {
+                    for (var j = 0; j < valueCount; j++)
                     {
-                        for (var j = 0; j < valueCount; j++)
-                        {
-                            var storeServices = CreateStoreServices(serviceProvider);
+                        var storeServices = CreateStoreServices(serviceProvider);
 
-                            var generatedValue = await generator.NextAsync(property, storeServices);
+                        var generatedValue = await generator.NextAsync(property, storeServices);
 
-                            generatedValues[testNumber].Add((long)generatedValue.Value);
-                        }
-                    };
+                        generatedValues[testNumber].Add((long)generatedValue.Value);
+                    }
+                };
             }
 
             var tasks = tests.Select(Task.Run).ToArray();
@@ -297,20 +289,11 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             Assert.True(checks.All(c => c));
         }
 
-        private LazyRef<DataStoreServices> CreateStoreServices(IServiceProvider serviceProvider = null)
+        private DbContextService<DataStoreServices> CreateStoreServices(IServiceProvider serviceProvider = null)
         {
-            serviceProvider = serviceProvider ?? new ServiceCollection()
-                .AddEntityFramework()
-                .AddSqlServer().ServiceCollection
-                .BuildServiceProvider();
+            serviceProvider = serviceProvider ?? TestHelpers.CreateServiceProvider();
 
-            var configuration = new DbContext(
-                serviceProvider,
-                new DbContextOptions()
-                    .UseModel(_model)
-                    .UseSqlServer(new SqlConnection())).Configuration;
-
-            return configuration.ScopedServiceProvider.GetService<LazyRef<DataStoreServices>>();
+            return TestHelpers.CreateContextServices(serviceProvider, _model).GetRequiredService<DbContextService<DataStoreServices>>();
         }
 
         private class FakeSqlStatementExecutor : SqlStatementExecutor
@@ -325,13 +308,13 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
                 _current = -blockSize;
             }
 
-            public override object ExecuteScalar(DbConnection connection, DbTransaction transaction, SqlStatement statement)
+            public override object ExecuteScalar(DbConnection connection, DbTransaction transaction, string sql)
             {
                 return Interlocked.Add(ref _current, _blockSize);
             }
 
             public override Task<object> ExecuteScalarAsync(
-                DbConnection connection, DbTransaction transaction, SqlStatement statement, CancellationToken cancellationToken = new CancellationToken())
+                DbConnection connection, DbTransaction transaction, string sql, CancellationToken cancellationToken = new CancellationToken())
             {
                 return Task.FromResult<object>(Interlocked.Add(ref _current, _blockSize));
             }

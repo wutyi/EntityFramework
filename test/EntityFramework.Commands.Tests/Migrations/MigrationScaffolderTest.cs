@@ -8,7 +8,8 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Relational;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Relational.Tests;
+using Microsoft.Framework.DependencyInjection;
 using Moq;
 using Xunit;
 
@@ -21,17 +22,23 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         {
             using (var context = new Context(new Model()))
             {
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>();
+                var model = contextServices.GetRequiredService<DbContextService<IModel>>().Service;
+
                 var scaffolder
                     = new MyMigrationScaffolder(
-                        context.Configuration,
-                        MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        context,
+                        options.Service,
+                        model,
+                        new MigrationAssembly(new DbContextService<DbContext>(context), options),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateEmptyMigration,
                         ValidateEmptyModelSnapshot);
 
-                scaffolder.ScaffoldMigration("MyMigration");
+                scaffolder.ScaffoldMigration("MyMigration", "MyNamespace");
             }
         }
 
@@ -40,17 +47,23 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         {
             using (var context = new Context(CreateModel()))
             {
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>();
+                var model = contextServices.GetRequiredService<DbContextService<IModel>>().Service;
+
                 var scaffolder
                     = new MyMigrationScaffolder(
-                        context.Configuration,
-                        MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        context,
+                        options.Service,
+                        model,
+                        new MigrationAssembly(new DbContextService<DbContext>(context), options),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigration,
                         ValidateModelSnapshot);
 
-                scaffolder.ScaffoldMigration("MyMigration");
+                scaffolder.ScaffoldMigration("MyMigration", "MyNamespace");
             }
         }
 
@@ -59,17 +72,23 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         {
             using (var context = new Context(CreateModelWithForeignKeys()))
             {
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>();
+                var model = contextServices.GetRequiredService<DbContextService<IModel>>().Service;
+
                 var scaffolder
                     = new MyMigrationScaffolder(
-                        context.Configuration,
-                        MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        context,
+                        options.Service,
+                        model,
+                        new MigrationAssembly(new DbContextService<DbContext>(context), options),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigrationWithForeignKeys,
                         ValidateModelWithForeignKeysSnapshot);
 
-                scaffolder.ScaffoldMigration("MyMigration");
+                scaffolder.ScaffoldMigration("MyMigration", "MyNamespace");
             }
         }
 
@@ -78,18 +97,90 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
         {
             using (var context = new Context(CreateModelWithCompositeKeys()))
             {
+                var contextServices = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = contextServices.GetRequiredService<DbContextService<IDbContextOptions>>();
+                var model = contextServices.GetRequiredService<DbContextService<IModel>>().Service;
+
                 var scaffolder
                     = new MyMigrationScaffolder(
-                        context.Configuration,
-                        MockMigrationAssembly(context.Configuration),
-                        new TestModelDiffer(),
+                        context,
+                        options.Service,
+                        model,
+                        new MigrationAssembly(new DbContextService<DbContext>(context), options),
+                        CreateModelDiffer(),
                         new CSharpMigrationCodeGenerator(
                             new CSharpModelCodeGenerator()),
                         ValidateMigrationWithCompositeKeys,
                         ValidateModelWithCompositeKeysSnapshot);
 
-                scaffolder.ScaffoldMigration("MyMigration");
+                scaffolder.ScaffoldMigration("MyMigration", "MyNamespace");
             }
+        }
+
+        [Fact]
+        public void GetNamespace_returns_default_when_migration_null()
+        {
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetNamespace(default(Migration), "Unicorn");
+
+            Assert.Equal("Unicorn.Migrations", result);
+        }
+
+        [Fact]
+        public void GetNamespace_returns_migration_namespace_when_set()
+        {
+            var migration = new Mock<Migration>();
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetNamespace(migration.Object, "Unicorn");
+
+            Assert.Equal("Castle.Proxies", result);
+        }
+
+        [Fact]
+        public void GetNamespace_returns_default_when_snapshot_null()
+        {
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetNamespace(default(ModelSnapshot), "Unicorn.Migrations");
+
+            Assert.Equal("Unicorn.Migrations", result);
+        }
+
+        [Fact]
+        public void GetNamespace_returns_snapshot_namespace_when_set()
+        {
+            var migration = new Mock<ModelSnapshot>();
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetNamespace(migration.Object, "Unicorn.Migrations");
+
+            Assert.Equal("Castle.Proxies", result);
+        }
+
+        [Fact]
+        public void GetDirectory_returns_full_namespace_when_outside_of_root()
+        {
+            var rootNamespace = "Propalaeotherium";
+            var @namespace = "Equus.Ferus.Unicornis";
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetDirectory(@namespace, rootNamespace);
+
+            Assert.Equal(@"Equus\Ferus\Unicornis", result);
+        }
+
+        [Fact]
+        public void GetDirectory_returns_sub_namespace_when_under_root()
+        {
+            var rootNamespace = "Equus";
+            var @namespace = "Equus.Ferus.Unicornis";
+            var scaffolder = new Mock<MigrationScaffolder> { CallBase = true }.Object;
+
+            var result = scaffolder.GetDirectory(@namespace, rootNamespace);
+
+            Assert.Equal(@"Ferus\Unicornis", result);
         }
 
         private static void ValidateEmptyMigration(string className, string migrationClass, string migrationMetadataClass)
@@ -99,10 +190,10 @@ namespace Microsoft.Data.Entity.Commands.Tests.Migrations
             Assert.Equal(
                 @"using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Builders;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     public partial class MyMigration : Migration
     {
@@ -124,7 +215,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public partial class MyMigration : IMigrationMetadata
@@ -170,7 +261,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public class ContextModelSnapshot : ModelSnapshot
@@ -195,10 +286,10 @@ namespace MyNamespace
 
             Assert.Equal(@"using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Builders;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     public partial class MyMigration : Migration
     {
@@ -227,7 +318,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public partial class MyMigration : IMigrationMetadata
@@ -281,7 +372,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public class ContextModelSnapshot : ModelSnapshot
@@ -315,10 +406,10 @@ namespace MyNamespace
             Assert.Equal(
                 @"using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Builders;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     public partial class MyMigration : Migration
     {
@@ -347,17 +438,25 @@ namespace MyNamespace
                     })
                 .PrimaryKey(""PK_dbo.Ord[\""e.r]s"", t => t.OrderId);
             
-            migrationBuilder.AddForeignKey(""dbo.[Cus[\""om.er]]s]"", ""My_[\""FK]"", new[] { ""House[\""Id]Column"" }, ""[Ho!use[]]]"", new[] { ""Id"" }, cascadeDelete: false);
+            migrationBuilder.AddForeignKey(
+                ""dbo.[Cus[\""om.er]]s]"",
+                ""My_[\""FK]"",
+                new[] { ""House[\""Id]Column"" },
+                ""[Ho!use[]]]"",
+                new[] { ""Id"" },
+                cascadeDelete: false);
             
-            migrationBuilder.AddForeignKey(""dbo.[Ord[\""e.r]]s]"", ""FK_dbo.Ord[\""e.r]s_dbo.Cus[\""om.er]s_CustomerId"", new[] { ""CustomerId"" }, ""dbo.[Cus[\""om.er]]s]"", new[] { ""Id"" }, cascadeDelete: false);
+            migrationBuilder.AddForeignKey(
+                ""dbo.[Ord[\""e.r]]s]"",
+                ""FK_dbo.Ord[\""e.r]s_dbo.Cus[\""om.er]s_CustomerId"",
+                new[] { ""CustomerId"" },
+                ""dbo.[Cus[\""om.er]]s]"",
+                new[] { ""Id"" },
+                cascadeDelete: false);
         }
         
         public override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(""dbo.[Cus[\""om.er]]s]"", ""My_[\""FK]"");
-            
-            migrationBuilder.DropForeignKey(""dbo.[Ord[\""e.r]]s]"", ""FK_dbo.Ord[\""e.r]s_dbo.Cus[\""om.er]s_CustomerId"");
-            
             migrationBuilder.DropTable(""[Ho!use[]]]"");
             
             migrationBuilder.DropTable(""dbo.[Cus[\""om.er]]s]"");
@@ -375,7 +474,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public partial class MyMigration : IMigrationMetadata
@@ -459,7 +558,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public class ContextModelSnapshot : ModelSnapshot
@@ -523,10 +622,10 @@ namespace MyNamespace
             Assert.Equal(
                 @"using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Builders;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     public partial class MyMigration : Migration
     {
@@ -586,7 +685,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public partial class MyMigration : IMigrationMetadata
@@ -672,7 +771,7 @@ using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using System;
 
-namespace MyNamespace
+namespace MyNamespace.Migrations
 {
     [ContextType(typeof(MigrationScaffolderTest.Context))]
     public class ContextModelSnapshot : ModelSnapshot
@@ -729,16 +828,6 @@ namespace MyNamespace
     }
 }",
                 modelSnapshotClass);
-        }
-
-        private static MigrationAssembly MockMigrationAssembly(DbContextConfiguration contextConfiguration)
-        {
-            var mock = new Mock<MigrationAssembly>(contextConfiguration);
-
-            mock.SetupGet(ma => ma.Migrations).Returns(new Migration[0]);
-            mock.SetupGet(ma => ma.Model).Returns((IModel)null);
-
-            return mock.Object;
         }
 
         private static IModel CreateModel()
@@ -856,13 +945,10 @@ namespace MyNamespace
                 _model = model;
             }
 
-            protected override void OnConfiguring(DbContextOptions builder)
+            protected override void OnConfiguring(DbContextOptions options)
             {
-                var contextOptionsExtensions = (IDbContextOptions)builder;
-
-                builder.UseModel(_model);
-                contextOptionsExtensions.AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.ConnectionString = "ConnectionString");
-                contextOptionsExtensions.AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.MigrationNamespace = "MyNamespace");
+                options.UseModel(_model);
+                ((IDbContextOptions)options).AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.ConnectionString = "ConnectionString");
             }
         }
 
@@ -879,14 +965,18 @@ namespace MyNamespace
             private readonly Action<string, string> _modelValidation;
 
             public MyMigrationScaffolder(
-                DbContextConfiguration contextConfiguration,
+                DbContext context,
+                IDbContextOptions options,
+                IModel model,
                 MigrationAssembly migrationAssembly,
                 ModelDiffer modelDiffer,
                 MigrationCodeGenerator migrationCodeGenerator,
                 Action<string, string, string> migrationValidation,
                 Action<string, string> modelValidation)
                 : base(
-                    contextConfiguration,
+                    context,
+                    options,
+                    model,
                     migrationAssembly,
                     modelDiffer,
                     migrationCodeGenerator)
@@ -900,25 +990,30 @@ namespace MyNamespace
                 return "000000000000001_" + migrationName;
             }
 
+            protected virtual string GetMigrationName(string migrationId)
+            {
+                return migrationId.Substring(16);
+            }
+
             protected override MigrationInfo CreateMigration(string migrationName)
             {
                 var migration = base.CreateMigration(migrationName);
 
                 return
                     new MigrationInfo(migration.MigrationId, "1.2.3.4")
-                        {
-                            TargetModel = migration.TargetModel,
-                            UpgradeOperations = migration.UpgradeOperations,
-                            DowngradeOperations = migration.DowngradeOperations
-                        };
+                    {
+                        TargetModel = migration.TargetModel,
+                        UpgradeOperations = migration.UpgradeOperations,
+                        DowngradeOperations = migration.DowngradeOperations
+                    };
             }
 
-            public override ScaffoldedMigration ScaffoldMigration(string migrationName)
+            public override ScaffoldedMigration ScaffoldMigration(string migrationName, string rootNamespace)
             {
-                var scaffoldedMigration = base.ScaffoldMigration(migrationName);
+                var scaffoldedMigration = base.ScaffoldMigration(migrationName, rootNamespace);
 
                 _migrationValidation(
-                    scaffoldedMigration.MigrationClass,
+                    GetMigrationName(scaffoldedMigration.MigrationId),
                     scaffoldedMigration.MigrationCode,
                     scaffoldedMigration.MigrationMetadataCode);
 
@@ -930,30 +1025,14 @@ namespace MyNamespace
             }
         }
 
-        private class TestDatabaseBuilder : DatabaseBuilder
+        private static ModelDiffer CreateModelDiffer()
         {
-            public TestDatabaseBuilder()
-                : base(new RelationalTypeMapper())
-            {
-            }
+            var extensionProvider = RelationalTestHelpers.ExtensionProvider();
+            var typeMapper = new RelationalTypeMapper();
+            var operationFactory = new MigrationOperationFactory(extensionProvider);
+            var operationProcessor = new MigrationOperationProcessor(extensionProvider, typeMapper, operationFactory);
 
-            protected override Sequence BuildSequence(IProperty property)
-            {
-                return null;
-            }
-        }
-
-        private class TestModelDiffer : ModelDiffer
-        {
-            public TestModelDiffer()
-                : base(new TestDatabaseBuilder())
-            {
-            }
-
-            protected override string GetSequenceName(Column column)
-            {
-                return null;
-            }
+            return new ModelDiffer(extensionProvider, typeMapper, operationFactory, operationProcessor);
         }
     }
 }

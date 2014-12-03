@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Open Technologies, Inc. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
@@ -103,7 +104,7 @@ namespace Microsoft.Data.Entity.Relational.Query.Expressions
         {
             Check.NotNull(querySource, "querySource");
 
-            return _tables.Single(t => t.QuerySource == querySource);
+            return _tables.First(t => t.QuerySource == querySource);
         }
 
         public virtual bool IsDistinct
@@ -304,13 +305,6 @@ namespace Microsoft.Data.Entity.Relational.Query.Expressions
 
             _projection.RemoveAll(ce => orderBy.Any(o => ReferenceEquals(o.Expression, ce)));
         }
-
-//        public void RemoveFromProjection([NotNull] IQuerySource querySource)
-//        {
-//            Check.NotNull(querySource, "querySource");
-//
-//            _projection.RemoveAll(ce => ce.Table.QuerySource == querySource);
-//        }
 
         public virtual int GetProjectionIndex([NotNull] IProperty property, [NotNull] IQuerySource querySource)
         {

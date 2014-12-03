@@ -2,8 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using Microsoft.Data.Entity.Migrations.Model;
-using Microsoft.Data.Entity.Relational.Model;
-using Microsoft.Data.Entity.Utilities;
+using Microsoft.Data.Entity.Relational;
 using Moq;
 using Xunit;
 
@@ -35,8 +34,8 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Model
                 "dbo.MyTable", "MyFK", new[] { "Foo", "Bar" },
                 "dbo.MyTable2", new[] { "Foo2", "Bar2" },
                 cascadeDelete: true);
-            var mockVisitor = new Mock<MigrationOperationSqlGenerator>(new RelationalTypeMapper());
-            var builder = new Mock<IndentedStringBuilder>();
+            var mockVisitor = MigrationsTestHelpers.MockSqlGenerator();
+            var builder = new Mock<SqlBatchBuilder>();
             addForeignKeyOperation.GenerateSql(mockVisitor.Object, builder.Object);
 
             mockVisitor.Verify(g => g.Generate(addForeignKeyOperation, builder.Object), Times.Once());

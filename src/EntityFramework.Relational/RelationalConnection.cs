@@ -31,12 +31,12 @@ namespace Microsoft.Data.Entity.Relational
         {
         }
 
-        protected RelationalConnection([NotNull] LazyRef<IDbContextOptions> options, [NotNull] ILoggerFactory loggerFactory)
+        protected RelationalConnection([NotNull] DbContextService<IDbContextOptions> options, [NotNull] ILoggerFactory loggerFactory)
             : base(loggerFactory)
         {
             Check.NotNull(options, "options");
 
-            var storeConfig = RelationalOptionsExtension.Extract(options.Value);
+            var storeConfig = RelationalOptionsExtension.Extract(options.Service);
 
             if (storeConfig.Connection != null)
             {
@@ -184,7 +184,7 @@ namespace Microsoft.Data.Entity.Relational
             // TODO: Consider how to handle open/closing to make sure that a connection that is passed in
             // as open is never erroneously closed without placing undue burdon on users of the connection.
             // Disabled: See GitHub #141
-            // Contract.Assert(_openedCount > 0);
+            // Debug.Assert(_openedCount > 0);
             if (--_openedCount == 0)
             {
                 _connection.Value.Close();

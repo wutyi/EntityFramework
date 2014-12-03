@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Internal;
+using Microsoft.Data.Entity.Utilities;
 
 namespace Microsoft.Data.Entity.Storage
 {
@@ -27,8 +29,10 @@ namespace Microsoft.Data.Entity.Storage
             _sources = sources == null ? new DataStoreSource[0] : sources.ToArray();
         }
 
-        public virtual DataStoreServices SelectDataStore([NotNull] DbContextConfiguration configuration)
+        public virtual DataStoreServices SelectDataStore(DbContextServices.ServiceProviderSource providerSource)
         {
+            Check.IsDefined(providerSource, "providerSource");
+
             var configured = _sources.Where(f => f.IsConfigured).ToArray();
 
             if (configured.Length == 1)
@@ -43,7 +47,7 @@ namespace Microsoft.Data.Entity.Storage
 
             if (_sources.Length == 0)
             {
-                if (configuration.ProviderSource == DbContextConfiguration.ServiceProviderSource.Implicit)
+                if (providerSource == DbContextServices.ServiceProviderSource.Implicit)
                 {
                     throw new InvalidOperationException(Strings.NoDataStoreConfigured);
                 }

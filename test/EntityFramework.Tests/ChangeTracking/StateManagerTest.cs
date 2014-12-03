@@ -5,9 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Data.Entity.ChangeTracking;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.DependencyInjection.Fallback;
 using Moq;
 using Xunit;
 
@@ -237,15 +237,6 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         }
 
         [Fact]
-        public void Can_get_model()
-        {
-            var model = BuildModel();
-            var stateManager = CreateStateManager(model);
-
-            Assert.Same(model, stateManager.Model);
-        }
-
-        [Fact]
         public void Listeners_are_notified_when_entity_states_change()
         {
             var listeners = new[]
@@ -255,17 +246,14 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
                     new Mock<IEntityStateListener>()
                 };
 
-            var services = new ServiceCollection();
-            services.AddEntityFramework();
-            services.AddInstance(listeners[0].Object);
-            services.AddInstance(listeners[1].Object);
-            services.AddInstance(listeners[2].Object);
+            var services = new ServiceCollection()
+                .AddInstance(listeners[0].Object)
+                .AddInstance(listeners[1].Object)
+                .AddInstance(listeners[2].Object);
 
-            var config = new DbContext(services.AddEntityFramework().AddInMemoryStore().ServiceCollection.BuildServiceProvider(),
-                new DbContextOptions().UseModel(BuildModel()))
-                .Configuration;
+            var contextServices = TestHelpers.CreateContextServices(services, BuildModel());
 
-            var stateManager = config.StateManager;
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entry = stateManager.GetOrCreateEntry(new Category { Id = 77 });
             entry.EntityState = EntityState.Added;
@@ -294,13 +282,8 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void DetectChanges_is_called_for_all_tracked_entities_and_returns_true_if_any_changes_detected()
         {
-            var model = BuildModel();
-
-            var services = new ServiceCollection();
-            services.AddEntityFramework().AddInMemoryStore();
-
-            var config = TestHelpers.CreateContextConfiguration(services.BuildServiceProvider(), model);
-            var stateManager = config.Services.StateManager;
+            var contextServices = TestHelpers.CreateContextServices(BuildModel());
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entry1 = stateManager.GetOrCreateEntry(new Category { Id = 77, Name = "Beverages" });
             var entry2 = stateManager.GetOrCreateEntry(new Category { Id = 78, Name = "Foods" });
@@ -402,7 +385,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
 
         private static StateManager CreateStateManager(IModel model)
         {
-            return TestHelpers.CreateContextConfiguration(model).Services.StateManager;
+            return TestHelpers.CreateContextServices(model).GetRequiredService<StateManager>();
         }
 
         private class Category

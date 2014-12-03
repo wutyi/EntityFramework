@@ -2,11 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Collections.Generic;
-using System.Linq;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
-using Microsoft.Data.Entity.Relational.Model;
 using Microsoft.Data.Entity.Utilities;
 
 namespace Microsoft.Data.Entity.Migrations.Model
@@ -28,15 +26,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _tableName = tableName;
             _uniqueConstraintName = uniqueConstraintName;
             _columnNames = columnNames;
-        }
-
-        public AddUniqueConstraintOperation([NotNull] UniqueConstraint uniqueConstraint)
-        {
-            Check.NotNull(uniqueConstraint, "uniqueConstraint");
-
-            _tableName = uniqueConstraint.Table.Name;
-            _uniqueConstraintName = uniqueConstraint.Name;
-            _columnNames = uniqueConstraint.Columns.Select(c => c.Name).ToArray();
         }
 
         public virtual SchemaQualifiedName TableName
@@ -62,12 +51,12 @@ namespace Microsoft.Data.Entity.Migrations.Model
             visitor.Visit(this, context);
         }
 
-        public override void GenerateSql(MigrationOperationSqlGenerator generator, IndentedStringBuilder stringBuilder)
+        public override void GenerateSql(MigrationOperationSqlGenerator generator, SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(generator, "generator");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            generator.Generate(this, stringBuilder);
+            generator.Generate(this, batchBuilder);
         }
 
         public override void GenerateCode(MigrationCodeGenerator generator, IndentedStringBuilder stringBuilder)

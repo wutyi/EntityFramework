@@ -8,6 +8,7 @@ using Microsoft.Data.Entity.Migrations.Builders;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
+using Microsoft.Framework.DependencyInjection;
 using Xunit;
 
 namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
@@ -19,7 +20,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         {
             using (var context = new Context())
             {
-                var migrationAssembly = new MigrationAssembly(context.Configuration);
+                var migrationAssembly = ((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<MigrationAssembly>();
 
                 Assert.Equal("EntityFramework.Migrations.Tests", migrationAssembly.Assembly.GetName().Name);
             }
@@ -28,14 +29,12 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         [Fact]
         public void Configure_assembly_and_namespace()
         {
-            using (var context
-                = new Context
-                    {
-                        MigrationAssembly = new MockAssembly(),
-                        MigrationNamespace = "MyNamespace"
-                    })
+            using (var context = new Context
             {
-                var migrationAssembly = new MigrationAssembly(context.Configuration);
+                MigrationAssembly = new MockAssembly()
+            })
+            {
+                var migrationAssembly = ((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<MigrationAssembly>();
 
                 Assert.Equal("MockAssembly", migrationAssembly.Assembly.FullName);
             }
@@ -46,7 +45,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         {
             using (var context = new Context())
             {
-                var migrationAssembly = new MigrationAssembly(context.Configuration);
+                var migrationAssembly = ((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<MigrationAssembly>();
 
                 var migrations1 = migrationAssembly.Migrations;
                 var migrations2 = migrationAssembly.Migrations;
@@ -63,10 +62,10 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         {
             using (var context = new Context())
             {
-                var migrationAssembly = new MigrationAssembly(context.Configuration);
+                var migrationAssembly = ((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<MigrationAssembly>();
 
-                var model1 = migrationAssembly.Model;
-                var model2 = migrationAssembly.Model;
+                var model1 = migrationAssembly.ModelSnapshot;
+                var model2 = migrationAssembly.ModelSnapshot;
 
                 Assert.Same(model1, model2);
             }
@@ -77,22 +76,14 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         public class Context : DbContext
         {
             internal Assembly MigrationAssembly { get; set; }
-            internal string MigrationNamespace { get; set; }
 
-            protected override void OnConfiguring(DbContextOptions builder)
+            protected override void OnConfiguring(DbContextOptions options)
             {
-                var contextOptionsExtensions = (IDbContextOptions)builder;
-
-                contextOptionsExtensions.AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.ConnectionString = "ConnectionString");
+                ((IDbContextOptions)options).AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.ConnectionString = "ConnectionString");
 
                 if (MigrationAssembly != null)
                 {
-                    contextOptionsExtensions.AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.MigrationAssembly = MigrationAssembly);
-                }
-
-                if (MigrationNamespace != null)
-                {
-                    contextOptionsExtensions.AddOrUpdateExtension<MyRelationalOptionsExtension>(x => x.MigrationNamespace = MigrationNamespace);
+                    options.UseMigrationAssembly(MigrationAssembly);
                 }
             }
         }
@@ -101,6 +92,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Infrastructure
         {
             protected override void ApplyServices(EntityServicesBuilder builder)
             {
+                builder.AddMigrations();
             }
         }
 

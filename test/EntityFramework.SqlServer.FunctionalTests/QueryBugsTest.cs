@@ -5,12 +5,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Framework.DependencyInjection;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Relational.FunctionalTests;
+using Microsoft.Framework.DependencyInjection;
 using Microsoft.Framework.DependencyInjection.Fallback;
 using Microsoft.Framework.Logging;
 using Xunit;
-using Microsoft.Data.Entity.Metadata;
 
 namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 {
@@ -103,7 +103,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
                 Assert.Equal(3, result[1].Orders.Count);
 
                 var expectedSql =
-@"SELECT [c].[FirstName], [c].[LastName]
+                    @"SELECT [c].[FirstName], [c].[LastName]
 FROM [Customer] AS [c]
 ORDER BY [c].[FirstName], [c].[LastName]
 
@@ -144,9 +144,9 @@ ORDER BY [c].[FirstName], [c].[LastName]";
                 Assert.NotNull(result[4].Customer);
 
                 var expectedSql =
-@"SELECT [o].[CustomerId0], [o].[CustomerId1], [o].[Id], [o].[Name], [c].[FirstName], [c].[LastName]
+                    @"SELECT [o].[CustomerId0], [o].[CustomerId1], [o].[Id], [o].[Name], [c].[FirstName], [c].[LastName]
 FROM [Order] AS [o]
-LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[LastName] = [o].[CustomerId1])";
+LEFT JOIN [Customer] AS [c] ON ([o].[CustomerId0] = [c].[FirstName] AND [o].[CustomerId1] = [c].[LastName])";
 
                 Assert.Equal(expectedSql, TestSqlLoggerFactory.Sql);
             }
@@ -168,8 +168,8 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
                 var customer1 = new Customer { FirstName = "Customer", LastName = "One", Orders = new List<Order> { order11, order12 } };
                 var customer2 = new Customer { FirstName = "Customer", LastName = "Two", Orders = new List<Order> { order21, order22, order23 } };
 
-                context.Customers.AddRange(new[] { customer1, customer2 });
-                context.Orders.AddRange(new[] { order11, order12, order21, order22, order23 });
+                context.Customers.Add(customer1, customer2);
+                context.Orders.Add(order11, order12, order21, order22, order23);
                 context.SaveChanges();
             }
         }
@@ -213,7 +213,7 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
             }
         }
 
-        ////[Fact]
+        [Fact]
         public void Include_on_optional_navigation_One_To_Many_963()
         {
             CreateDatabase963();
@@ -224,7 +224,7 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
             }
         }
 
-        ////[Fact]
+        [Fact]
         public void Include_on_optional_navigation_Many_To_One_963()
         {
             CreateDatabase963();
@@ -235,7 +235,7 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
             }
         }
 
-        ////[Fact]
+        [Fact]
         public void Include_on_optional_navigation_One_To_One_principal_963()
         {
             CreateDatabase963();
@@ -246,7 +246,7 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
             }
         }
 
-        ////[Fact]
+        [Fact]
         public void Include_on_optional_navigation_One_To_One_dependent_963()
         {
             CreateDatabase963();
@@ -254,6 +254,19 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
             using (var ctx = new MyContext963(_fixture.ServiceProvider))
             {
                 ctx.Details.Include(d => d.Targaryen).ToList();
+            }
+        }
+
+        [Fact]
+        public void Join_on_optional_navigation_One_To_Many_963()
+        {
+            CreateDatabase963();
+
+            using (var ctx = new MyContext963(_fixture.ServiceProvider))
+            {
+                (from t in ctx.Targaryens
+                    join d in ctx.Dragons on t.Id equals d.MotherId
+                    select d).ToList();
             }
         }
 
@@ -271,14 +284,14 @@ LEFT JOIN [Customer] AS [c] ON ([c].[FirstName] = [o].[CustomerId0] AND [c].[Las
 
                 var aerys = new Targaryen { Name = "Aerys II" };
                 var details = new Details
-                {
-                    FullName = @"Daenerys Stormborn of the House Targaryen, the First of Her Name, the Unburnt, Queen of Meereen, 
+                    {
+                        FullName = @"Daenerys Stormborn of the House Targaryen, the First of Her Name, the Unburnt, Queen of Meereen, 
 Queen of the Andals and the Rhoynar and the First Men, Khaleesi of the Great Grass Sea, Breaker of Chains, and Mother of Dragons"
-                };
+                    };
 
                 var daenerys = new Targaryen { Name = "Daenerys", Details = details, Dragons = new List<Dragon> { drogon, rhaegal, viserion } };
-                context.Targaryens.AddRange(new[] { daenerys, aerys });
-                context.Dragons.AddRange(new[] { drogon, rhaegal, viserion, balerion });
+                context.Targaryens.Add(daenerys, aerys);
+                context.Dragons.Add(drogon, rhaegal, viserion, balerion);
                 context.Details.Add(details);
 
                 context.SaveChanges();
@@ -330,15 +343,16 @@ Queen of the Andals and the Rhoynar and the First Men, Khaleesi of the Great Gra
             protected override void OnModelCreating(ModelBuilder modelBuilder)
             {
                 modelBuilder.Entity<Targaryen>(m =>
-                {
-                    m.Key(t => t.Id);
-                    m.OneToMany(t => t.Dragons, d => d.Mother).ForeignKey(d => d.MotherId);
-                    m.OneToOne(t => t.Details, d => d.Targaryen).ForeignKey<Details>(d => d.TargaryenId);
-                });
+                    {
+                        m.Key(t => t.Id);
+                        m.OneToMany(t => t.Dragons, d => d.Mother).ForeignKey(d => d.MotherId);
+                        m.OneToOne(t => t.Details, d => d.Targaryen).ForeignKey<Details>(d => d.TargaryenId);
+                    });
             }
         }
-        
+
         private readonly SqlServerFixture _fixture;
+
         public QueryBugsTest(SqlServerFixture fixture)
         {
             _fixture = fixture;

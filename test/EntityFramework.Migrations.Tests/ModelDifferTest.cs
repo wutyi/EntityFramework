@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Open Technologies, Inc. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Relational;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Relational.Tests;
 using Xunit;
 
 namespace Microsoft.Data.Entity.Migrations.Tests
@@ -39,35 +40,37 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id").IsUnique().ForRelational().Name("IX");
                     });
 
-            var databaseBuilder = new TestDatabaseBuilder();
-            var operations = new TestModelDiffer(databaseBuilder).CreateSchema(modelBuider.Model);
-            var dbModel = databaseBuilder.GetDatabase(modelBuider.Model);
+            var operations = ModelDiffer().CreateSchema(modelBuider.Model);
 
             Assert.Equal(4, operations.Count);
 
             var createTableOperation0 = (CreateTableOperation)operations[0];
             var createTableOperation1 = (CreateTableOperation)operations[1];
 
-            Assert.Equal(dbModel.Tables[0].Name, createTableOperation0.TableName);
-            Assert.Equal(dbModel.Tables[1].Name, createTableOperation1.TableName);
-            Assert.Equal(dbModel.Tables[0].Columns, createTableOperation0.Columns);
-            Assert.Equal(dbModel.Tables[1].Columns, createTableOperation1.Columns);
+            Assert.Equal("dbo.T0", createTableOperation0.TableName);
+            Assert.Equal("dbo.T1", createTableOperation1.TableName);
+            Assert.Equal(new[] { "Id", "C0" }, createTableOperation0.Columns.Select(c => c.Name));
+            Assert.Equal(new[] { "Id", "C1" }, createTableOperation1.Columns.Select(c => c.Name));
+            Assert.Equal(1, createTableOperation1.ForeignKeys.Count);
+            Assert.Equal(1, createTableOperation1.Indexes.Count);
 
             var addForeignKeyOperation = (AddForeignKeyOperation)operations[2];
 
+            Assert.Same(createTableOperation1.ForeignKeys[0], addForeignKeyOperation);
             Assert.Equal("FK", addForeignKeyOperation.ForeignKeyName);
             Assert.Equal("dbo.T1", addForeignKeyOperation.TableName);
             Assert.Equal("dbo.T0", addForeignKeyOperation.ReferencedTableName);
-            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ColumnNames);
-            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames);
+            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ColumnNames.AsEnumerable());
+            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames.AsEnumerable());
             // TODO: Cascading behaviors not supported. Issue #333
             //Assert.True(addForeignKeyOperation.CascadeDelete);
 
             var createIndexOperation = (CreateIndexOperation)operations[3];
 
+            Assert.Same(createTableOperation1.Indexes[0], createIndexOperation);
             Assert.Equal("IX", createIndexOperation.IndexName);
             Assert.Equal("dbo.T1", createIndexOperation.TableName);
-            Assert.Equal(new[] { "Id" }, createIndexOperation.ColumnNames);
+            Assert.Equal(new[] { "Id" }, createIndexOperation.ColumnNames.AsEnumerable());
             Assert.True(createIndexOperation.IsUnique);
         }
 
@@ -94,15 +97,13 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id").IsUnique().ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).DropSchema(modelBuider.Model);
+            var operations = ModelDiffer().DropSchema(modelBuider.Model);
 
-            Assert.Equal(3, operations.Count);
+            Assert.Equal(2, operations.Count);
 
-            var dropForeignKeyOperation = (DropForeignKeyOperation)operations[0];
-            var dropTableOperation0 = (DropTableOperation)operations[1];
-            var dropTableOperation1 = (DropTableOperation)operations[2];
+            var dropTableOperation0 = (DropTableOperation)operations[0];
+            var dropTableOperation1 = (DropTableOperation)operations[1];
 
-            Assert.Equal("FK", dropForeignKeyOperation.ForeignKeyName);
             Assert.Equal("dbo.T0", dropTableOperation0.TableName);
             Assert.Equal("dbo.T1", dropTableOperation1.TableName);
         }
@@ -128,8 +129,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForRelational().Table("T", "OtherSchema");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<MoveTableOperation>(operations[0]);
@@ -161,8 +161,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForRelational().Table("RenamedTable", "dbo");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<RenameTableOperation>(operations[0]);
@@ -202,10 +201,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id").IsUnique().ForRelational().Name("IX");
                     });
 
-            var databaseBuilder = new TestDatabaseBuilder();
-            var operations = new TestModelDiffer(databaseBuilder).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
-            var targetDbModel = databaseBuilder.GetDatabase(targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(3, operations.Count);
             Assert.IsType<CreateTableOperation>(operations[0]);
@@ -214,25 +210,29 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             var createTableOperation = (CreateTableOperation)operations[0];
 
-            Assert.Equal(targetDbModel.Tables[1].Name, createTableOperation.TableName);
-            Assert.Equal(targetDbModel.Tables[1].Columns, createTableOperation.Columns);
+            Assert.Equal("B", createTableOperation.TableName);
+            Assert.Equal(new[] { "Id" }, createTableOperation.Columns.Select(c => c.Name));
+            Assert.Equal(1, createTableOperation.ForeignKeys.Count);
+            Assert.Equal(1, createTableOperation.Indexes.Count);
 
             var addForeignKeyOperation = (AddForeignKeyOperation)operations[1];
 
+            Assert.Same(createTableOperation.ForeignKeys[0], addForeignKeyOperation);
             Assert.Equal("FK", addForeignKeyOperation.ForeignKeyName);
             Assert.Equal("B", addForeignKeyOperation.TableName);
             Assert.Equal("A", addForeignKeyOperation.ReferencedTableName);
-            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ColumnNames);
-            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames);
+            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ColumnNames.AsEnumerable());
+            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames.AsEnumerable());
 
             // TODO: Cascading behaviors not supported. Issue #333
             //Assert.True(addForeignKeyOperation.CascadeDelete);
 
             var createIndexOperation = (CreateIndexOperation)operations[2];
 
+            Assert.Same(createTableOperation.Indexes[0], createIndexOperation);
             Assert.Equal("IX", createIndexOperation.IndexName);
             Assert.Equal("B", createIndexOperation.TableName);
-            Assert.Equal(new[] { "Id" }, createIndexOperation.ColumnNames);
+            Assert.Equal(new[] { "Id" }, createIndexOperation.ColumnNames.AsEnumerable());
             Assert.True(createIndexOperation.IsUnique);
         }
 
@@ -261,8 +261,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<DropTableOperation>(operations[0]);
@@ -293,8 +292,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<RenameColumnOperation>(operations[0]);
@@ -326,8 +324,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AddColumnOperation>(operations[0]);
@@ -359,8 +356,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<DropColumnOperation>(operations[0]);
@@ -392,8 +388,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AlterColumnOperation>(operations[0]);
@@ -426,8 +421,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id", "P").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
             Assert.IsType<DropPrimaryKeyOperation>(operations[0]);
@@ -440,7 +434,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
             Assert.Equal("PK", dropPrimaryKeyOperation.PrimaryKeyName);
             Assert.Equal("A", addPrimaryKeyOperation.TableName);
             Assert.Equal("PK", addPrimaryKeyOperation.PrimaryKeyName);
-            Assert.Equal(new[] { "Id", "P" }, addPrimaryKeyOperation.ColumnNames);
+            Assert.Equal(new[] { "Id", "P" }, addPrimaryKeyOperation.ColumnNames.AsEnumerable());
         }
 
         [Fact]
@@ -465,8 +459,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { id, p }).Relational().Name = "UC";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AddUniqueConstraintOperation>(operations[0]);
@@ -475,7 +468,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("A", addUniqueConstraintOperation.TableName);
             Assert.Equal("UC", addUniqueConstraintOperation.UniqueConstraintName);
-            Assert.Equal(new[] { "Id", "P" }, addUniqueConstraintOperation.ColumnNames);
+            Assert.Equal(new[] { "Id", "P" }, addUniqueConstraintOperation.ColumnNames.AsEnumerable());
         }
 
         [Fact]
@@ -500,8 +493,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<DropUniqueConstraintOperation>(operations[0]);
@@ -550,8 +542,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         //.CascadeDelete(true);
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AddForeignKeyOperation>(operations[0]);
@@ -561,8 +552,8 @@ namespace Microsoft.Data.Entity.Migrations.Tests
             Assert.Equal("FK", addForeignKeyOperation.ForeignKeyName);
             Assert.Equal("B", addForeignKeyOperation.TableName);
             Assert.Equal("A", addForeignKeyOperation.ReferencedTableName);
-            Assert.Equal(new[] { "P" }, addForeignKeyOperation.ColumnNames);
-            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames);
+            Assert.Equal(new[] { "P" }, addForeignKeyOperation.ColumnNames.AsEnumerable());
+            Assert.Equal(new[] { "Id" }, addForeignKeyOperation.ReferencedColumnNames.AsEnumerable());
             // TODO: Cascading behaviors not supported. Issue #333
             //Assert.True(addForeignKeyOperation.CascadeDelete);
         }
@@ -603,8 +594,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<DropForeignKeyOperation>(operations[0]);
@@ -639,8 +629,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("P").IsUnique().ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<CreateIndexOperation>(operations[0]);
@@ -649,7 +638,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("A", createIndexOperation.TableName);
             Assert.Equal("IX", createIndexOperation.IndexName);
-            Assert.Equal(new[] { "P" }, createIndexOperation.ColumnNames);
+            Assert.Equal(new[] { "P" }, createIndexOperation.ColumnNames.AsEnumerable());
             Assert.True(createIndexOperation.IsUnique);
         }
 
@@ -677,8 +666,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<DropIndexOperation>(operations[0]);
@@ -710,8 +698,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id").ForRelational().Name("RenamedIndex");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<RenameIndexOperation>(operations[0]);
@@ -762,8 +749,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForRelational().Table("T0", "dbo");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(3, operations.Count);
 
@@ -806,8 +792,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(3, operations.Count);
 
@@ -852,8 +837,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("P").ForRelational().Name("IX0");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(3, operations.Count);
 
@@ -899,8 +883,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -938,8 +921,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -979,8 +961,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
 
@@ -1013,8 +994,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1051,8 +1031,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(3, operations.Count);
 
@@ -1096,8 +1075,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1131,8 +1109,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AlterColumnOperation>(operations[0]);
@@ -1161,8 +1138,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AlterColumnOperation>(operations[0]);
@@ -1191,8 +1167,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AlterColumnOperation>(operations[0]);
@@ -1221,8 +1196,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
             Assert.IsType<AlterColumnOperation>(operations[0]);
@@ -1259,8 +1233,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id", "P");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1289,8 +1262,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id", "P2").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
 
@@ -1316,8 +1288,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id").ForRelational().Name("PK2");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1352,8 +1323,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1365,7 +1335,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("PK", dropPrimaryKeyOperation.PrimaryKeyName);
             Assert.Equal("PK", addPrimaryKeyOperation.PrimaryKeyName);
-            Assert.Equal(new[] { "Id" }, addPrimaryKeyOperation.ColumnNames);
+            Assert.Equal(new[] { "Id" }, addPrimaryKeyOperation.ColumnNames.AsEnumerable());
         }
 
         [Fact]
@@ -1391,8 +1361,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Key("Id", "P2").ForRelational().Name("PK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1404,7 +1373,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("PK", dropPrimaryKeyOperation.PrimaryKeyName);
             Assert.Equal("PK", addPrimaryKeyOperation.PrimaryKeyName);
-            Assert.Equal(new[] { "Id", "P2" }, addPrimaryKeyOperation.ColumnNames);
+            Assert.Equal(new[] { "Id", "P2" }, addPrimaryKeyOperation.ColumnNames.AsEnumerable());
         }
 
         #endregion
@@ -1434,8 +1403,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { id, p }).Relational().Name = "UC";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1466,8 +1434,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { id, p }).Relational().Name = "UC";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
 
@@ -1497,8 +1464,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { id, p }).Relational().Name = "UC2";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1535,8 +1501,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { p, id }).Relational().Name = "UC";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1548,7 +1513,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("UC", dropUniqueConstraintOperation.UniqueConstraintName);
             Assert.Equal("UC", addUniqueConstraintOperation.UniqueConstraintName);
-            Assert.Equal(new[] { "P", "Id" }, addUniqueConstraintOperation.ColumnNames);
+            Assert.Equal(new[] { "P", "Id" }, addUniqueConstraintOperation.ColumnNames.AsEnumerable());
         }
 
         [Fact]
@@ -1576,8 +1541,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Metadata.AddKey(new[] { id, p2 }).Relational().Name = "UC";
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1589,7 +1553,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("UC", dropUniqueConstraintOperation.UniqueConstraintName);
             Assert.Equal("UC", addUniqueConstraintOperation.UniqueConstraintName);
-            Assert.Equal(new[] { "Id", "P2" }, addUniqueConstraintOperation.ColumnNames);
+            Assert.Equal(new[] { "Id", "P2" }, addUniqueConstraintOperation.ColumnNames.AsEnumerable());
         }
 
         #endregion
@@ -1631,8 +1595,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "P").ForRelational().Name("FK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(5, operations.Count);
 
@@ -1678,7 +1641,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "P2").ForRelational().Name("FK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
+            var operations = Diff(
                 sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
@@ -1720,8 +1683,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "Id").ForRelational().Name("FK2");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1772,8 +1734,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         //.CascadeDelete(false);
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1829,8 +1790,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "Id", "P2").ForRelational().Name("FK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1842,7 +1802,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("FK", dropForeignKeyOperation.ForeignKeyName);
             Assert.Equal("FK", addForeignKeyOperation.ForeignKeyName);
-            Assert.Equal(new[] { "Id", "P2" }, addForeignKeyOperation.ColumnNames);
+            Assert.Equal(new[] { "Id", "P2" }, addForeignKeyOperation.ColumnNames.AsEnumerable());
         }
 
         [Fact]
@@ -1886,8 +1846,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.ForeignKey("A", "Id", "P1").ForRelational().Name("FK");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(4, operations.Count);
 
@@ -1901,7 +1860,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
             Assert.Equal("FK", dropForeignKeyOperation.ForeignKeyName);
             Assert.Equal("FK", addForeignKeyOperation.ForeignKeyName);
-            Assert.Equal(new[] { "Id", "P2" }, addForeignKeyOperation.ReferencedColumnNames);
+            Assert.Equal(new[] { "Id", "P2" }, addForeignKeyOperation.ReferencedColumnNames.AsEnumerable());
         }
 
         #endregion
@@ -1931,8 +1890,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id", "P").ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -1963,8 +1921,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id", "P2").ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
 
@@ -1994,8 +1951,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("P1").ForRelational().Name("IX2");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(1, operations.Count);
 
@@ -2030,8 +1986,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("P1").IsUnique();
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -2069,8 +2024,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("Id", "P1").ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -2109,8 +2063,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests
                         b.Index("P2").ForRelational().Name("IX");
                     });
 
-            var operations = new TestModelDiffer(new TestDatabaseBuilder()).Diff(
-                sourceModelBuilder.Model, targetModelBuilder.Model);
+            var operations = Diff(sourceModelBuilder.Model, targetModelBuilder.Model);
 
             Assert.Equal(2, operations.Count);
 
@@ -2126,30 +2079,19 @@ namespace Microsoft.Data.Entity.Migrations.Tests
 
         #endregion
 
-        private class TestDatabaseBuilder : DatabaseBuilder
+        private static ModelDiffer ModelDiffer()
         {
-            public TestDatabaseBuilder()
-                : base(new RelationalTypeMapper())
-            {
-            }
+            var extensionProvider = RelationalTestHelpers.ExtensionProvider();
+            var typeMapper = new RelationalTypeMapper();
+            var operationFactory = new MigrationOperationFactory(extensionProvider);
+            var operationProcessor = new MigrationOperationProcessor(extensionProvider, typeMapper, operationFactory);
 
-            protected override Sequence BuildSequence(IProperty property)
-            {
-                return null;
-            }
+            return new ModelDiffer(extensionProvider, typeMapper, operationFactory, operationProcessor);
         }
 
-        private class TestModelDiffer : ModelDiffer
+        private static IReadOnlyList<MigrationOperation> Diff(IModel sourceModel, IModel targetModel)
         {
-            public TestModelDiffer(TestDatabaseBuilder databaseBuilder)
-                : base(databaseBuilder)
-            {
-            }
-
-            protected override string GetSequenceName(Column column)
-            {
-                return null;
-            }
+            return ModelDiffer().Diff(sourceModel, targetModel);
         }
     }
 }

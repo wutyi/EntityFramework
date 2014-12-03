@@ -12,7 +12,9 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         [Fact]
         public void Returns_appropriate_name()
         {
-            Assert.Equal(typeof(SqlServerDataStore).Name, new SqlServerDataStoreSource(Mock.Of<DbContextConfiguration>()).Name);
+            Assert.Equal(
+                typeof(SqlServerDataStore).Name, 
+                new SqlServerDataStoreSource(Mock.Of<DbContextServices>(), new DbContextService<IDbContextOptions>(() => null)).Name);
         }
 
         [Fact]
@@ -21,10 +23,10 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             IDbContextOptions options = new DbContextOptions();
             options.AddOrUpdateExtension<SqlServerOptionsExtension>(e => { });
 
-            var configurationMock = new Mock<DbContextConfiguration>();
+            var configurationMock = new Mock<DbContextServices>();
             configurationMock.Setup(m => m.ContextOptions).Returns(options);
 
-            Assert.True(new SqlServerDataStoreSource(configurationMock.Object).IsConfigured);
+            Assert.True(new SqlServerDataStoreSource(configurationMock.Object, new DbContextService<IDbContextOptions>(options)).IsConfigured);
         }
 
         [Fact]
@@ -32,10 +34,10 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         {
             var options = new DbContextOptions();
 
-            var configurationMock = new Mock<DbContextConfiguration>();
+            var configurationMock = new Mock<DbContextServices>();
             configurationMock.Setup(m => m.ContextOptions).Returns(options);
 
-            Assert.False(new SqlServerDataStoreSource(configurationMock.Object).IsConfigured);
+            Assert.False(new SqlServerDataStoreSource(configurationMock.Object, new DbContextService<IDbContextOptions>(options)).IsConfigured);
         }
 
         [Fact]
@@ -44,10 +46,10 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             IDbContextOptions options = new DbContextOptions();
             options.AddOrUpdateExtension<SqlServerOptionsExtension>(e => { });
 
-            var configurationMock = new Mock<DbContextConfiguration>();
+            var configurationMock = new Mock<DbContextServices>();
             configurationMock.Setup(m => m.ContextOptions).Returns(options);
 
-            Assert.True(new SqlServerDataStoreSource(configurationMock.Object).IsAvailable);
+            Assert.True(new SqlServerDataStoreSource(configurationMock.Object, new DbContextService<IDbContextOptions>(options)).IsAvailable);
         }
 
         [Fact]
@@ -55,10 +57,10 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
         {
             var options = new DbContextOptions();
 
-            var configurationMock = new Mock<DbContextConfiguration>();
+            var configurationMock = new Mock<DbContextServices>();
             configurationMock.Setup(m => m.ContextOptions).Returns(options);
 
-            Assert.False(new SqlServerDataStoreSource(configurationMock.Object).IsAvailable);
+            Assert.False(new SqlServerDataStoreSource(configurationMock.Object, new DbContextService<IDbContextOptions>(options)).IsAvailable);
         }
     }
 }

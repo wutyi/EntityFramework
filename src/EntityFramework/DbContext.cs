@@ -2,11 +2,15 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.ChangeTracking;
 using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Utilities;
@@ -16,15 +20,14 @@ using Microsoft.Framework.OptionsModel;
 
 namespace Microsoft.Data.Entity
 {
-    public class DbContext : IDisposable
+    public class DbContext : IDisposable, IDbContextServices
     {
         private static readonly ThreadSafeDictionaryCache<Type, Type> _optionsTypes = new ThreadSafeDictionaryCache<Type, Type>();
 
-        private readonly LazyRef<DbContextConfiguration> _configuration;
-        private readonly ContextSets _sets = new ContextSets();
+        private readonly LazyRef<DbContextServices> _configuration;
         private readonly LazyRef<ILogger> _logger;
+        private readonly LazyRef<DbSetInitializer> _setInitializer;
 
-        private IServiceProvider _scopedServiceProvider;
         private bool _initializing;
 
         protected DbContext()
@@ -33,8 +36,9 @@ namespace Microsoft.Data.Entity
             var options = GetOptions(serviceProvider);
 
             InitializeSets(serviceProvider, options);
-            _configuration = new LazyRef<DbContextConfiguration>(() => Initialize(serviceProvider, options));
+            _configuration = new LazyRef<DbContextServices>(() => Initialize(serviceProvider, options));
             _logger = new LazyRef<ILogger>(CreateLogger);
+            _setInitializer = new LazyRef<DbSetInitializer>(GetSetInitializer);
         }
 
         public DbContext([NotNull] IServiceProvider serviceProvider)
@@ -44,10 +48,11 @@ namespace Microsoft.Data.Entity
             var options = GetOptions(serviceProvider);
 
             InitializeSets(serviceProvider, options);
-            _configuration = new LazyRef<DbContextConfiguration>(
+            _configuration = new LazyRef<DbContextServices>(
                 () => Initialize(serviceProvider, options));
 
             _logger = new LazyRef<ILogger>(CreateLogger);
+            _setInitializer = new LazyRef<DbSetInitializer>(GetSetInitializer);
         }
 
         private DbContextOptions GetOptions(IServiceProvider serviceProvider)
@@ -94,8 +99,9 @@ namespace Microsoft.Data.Entity
             var serviceProvider = DbContextActivator.ServiceProvider;
 
             InitializeSets(serviceProvider, options);
-            _configuration = new LazyRef<DbContextConfiguration>(() => Initialize(serviceProvider, options));
+            _configuration = new LazyRef<DbContextServices>(() => Initialize(serviceProvider, options));
             _logger = new LazyRef<ILogger>(CreateLogger);
+            _setInitializer = new LazyRef<DbSetInitializer>(GetSetInitializer);
         }
 
         // TODO: Consider removing this constructor if DbContextOptions should be obtained from serviceProvider
@@ -106,16 +112,32 @@ namespace Microsoft.Data.Entity
             Check.NotNull(options, "options");
 
             InitializeSets(serviceProvider, options);
-            _configuration = new LazyRef<DbContextConfiguration>(() => Initialize(serviceProvider, options));
+            _configuration = new LazyRef<DbContextServices>(() => Initialize(serviceProvider, options));
             _logger = new LazyRef<ILogger>(CreateLogger);
+            _setInitializer = new LazyRef<DbSetInitializer>(GetSetInitializer);
         }
 
         private ILogger CreateLogger()
         {
-            return _configuration.Value.Services.ServiceProvider.GetRequiredServiceChecked<ILoggerFactory>().Create<DbContext>();
+            return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<ILoggerFactory>().Create<DbContext>();
         }
 
-        private DbContextConfiguration Initialize(IServiceProvider serviceProvider, DbContextOptions options)
+        private DbSetInitializer GetSetInitializer()
+        {
+            return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<DbSetInitializer>();
+        }
+
+        private ChangeDetector GetChangeDetector()
+        {
+            return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<ChangeDetector>();
+        }
+
+        private StateManager GetStateManager()
+        {
+            return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<StateManager>();
+        }
+
+        private DbContextServices Initialize(IServiceProvider serviceProvider, DbContextOptions options)
         {
             if (_initializing)
             {
@@ -131,19 +153,19 @@ namespace Microsoft.Data.Entity
                 OnConfiguring(options);
 
                 var providerSource = serviceProvider != null
-                    ? DbContextConfiguration.ServiceProviderSource.Explicit
-                    : DbContextConfiguration.ServiceProviderSource.Implicit;
+                    ? DbContextServices.ServiceProviderSource.Explicit
+                    : DbContextServices.ServiceProviderSource.Implicit;
 
                 serviceProvider = serviceProvider ?? ServiceProviderCache.Instance.GetOrAdd(options);
 
-                _scopedServiceProvider = serviceProvider
+                var scopedServiceProvider = serviceProvider
                     .GetRequiredServiceChecked<IServiceScopeFactory>()
                     .CreateScope()
                     .ServiceProvider;
 
-                return _scopedServiceProvider
-                    .GetRequiredServiceChecked<DbContextConfiguration>()
-                    .Initialize(serviceProvider, _scopedServiceProvider, options, this, providerSource);
+                return scopedServiceProvider
+                    .GetRequiredServiceChecked<DbContextServices>()
+                    .Initialize(scopedServiceProvider, options, this, providerSource);
             }
             finally
             {
@@ -158,9 +180,9 @@ namespace Microsoft.Data.Entity
             serviceProvider.GetRequiredServiceChecked<DbSetInitializer>().InitializeSets(this);
         }
 
-        public virtual DbContextConfiguration Configuration
+        IServiceProvider IDbContextServices.ScopedServiceProvider
         {
-            get { return _configuration.Value; }
+            get { return _configuration.Value.ScopedServiceProvider; }
         }
 
         protected internal virtual void OnConfiguring(DbContextOptions options)
@@ -171,13 +193,14 @@ namespace Microsoft.Data.Entity
         {
         }
 
+        [DebuggerStepThrough]
         public virtual int SaveChanges()
         {
-            var stateManager = Configuration.StateManager;
+            var stateManager = GetStateManager();
 
             // TODO: Allow auto-detect changes to be switched off
             // Issue #745
-            Configuration.Services.ChangeDetector.DetectChanges(stateManager);
+            GetChangeDetector().DetectChanges(stateManager);
 
             try
             {
@@ -197,11 +220,11 @@ namespace Microsoft.Data.Entity
 
         public virtual async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default(CancellationToken))
         {
-            var stateManager = Configuration.StateManager;
+            var stateManager = GetStateManager();
 
             // TODO: Allow auto-detect changes to be switched off
             // Issue #745
-            Configuration.Services.ChangeDetector.DetectChanges(stateManager);
+            GetChangeDetector().DetectChanges(stateManager);
 
             try
             {
@@ -219,89 +242,273 @@ namespace Microsoft.Data.Entity
             }
         }
 
-        // TODO: Consider Framework Guidelines recommended dispose pattern
-        // Issue #746
         public virtual void Dispose()
         {
-            var disposableServiceProvider = _scopedServiceProvider as IDisposable;
-
-            if (disposableServiceProvider != null)
+            if (_configuration.HasValue)
             {
-                disposableServiceProvider.Dispose();
+                _configuration.Value.Dispose();
             }
         }
 
-        public virtual TEntity Add<TEntity>([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Add<TEntity>([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            Configuration.StateManager
-                .GetOrCreateEntry(entity)
-                .EntityState = EntityState.Added;
-
-            return entity;
+            return SetEntityState(entity, EntityState.Added);
         }
 
-        public virtual async Task<TEntity> AddAsync<TEntity>(
+        public virtual async Task<EntityEntry<TEntity>> AddAsync<TEntity>(
             [NotNull] TEntity entity, CancellationToken cancellationToken = default(CancellationToken))
         {
             Check.NotNull(entity, "entity");
 
-            await Configuration.StateManager
-                .GetOrCreateEntry(entity)
+            var entry = ChangeTracker.Entry(entity);
+
+            await entry.StateEntry
                 .SetEntityStateAsync(EntityState.Added, cancellationToken)
                 .WithCurrentCulture();
 
-            return entity;
+            return entry;
         }
 
-        public virtual TEntity Update<TEntity>([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Attach<TEntity>([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            ChangeTracker.Entry(entity).State = EntityState.Modified;
-
-            return entity;
+            return SetEntityState(entity, EntityState.Unchanged);
         }
 
-        public virtual Task<TEntity> UpdateAsync<TEntity>([NotNull] TEntity entity, CancellationToken cancellationToken = default(CancellationToken))
+        public virtual EntityEntry<TEntity> Update<TEntity>([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            return Task.FromResult(Update(entity));
+            return SetEntityState(entity, EntityState.Modified);
         }
 
-        public virtual TEntity Delete<TEntity>([NotNull] TEntity entity)
+        public virtual EntityEntry<TEntity> Remove<TEntity>([NotNull] TEntity entity)
         {
             Check.NotNull(entity, "entity");
 
-            ChangeTracker.Entry(entity).State = EntityState.Deleted;
+            return SetEntityState(entity, EntityState.Deleted);
+        }
 
-            return entity;
+        private EntityEntry<TEntity> SetEntityState<TEntity>(TEntity entity, EntityState entityState)
+        {
+            var entry = ChangeTracker.Entry(entity);
+
+            entry.State = entityState;
+
+            return entry;
+        }
+
+        public virtual EntityEntry Add([NotNull] object entity)
+        {
+            Check.NotNull(entity, "entity");
+
+            return SetEntityState(entity, EntityState.Added);
+        }
+
+        public virtual async Task<EntityEntry> AddAsync(
+            [NotNull] object entity, CancellationToken cancellationToken = default(CancellationToken))
+        {
+            Check.NotNull(entity, "entity");
+
+            var entry = ChangeTracker.Entry(entity);
+
+            await entry.StateEntry
+                .SetEntityStateAsync(EntityState.Added, cancellationToken)
+                .WithCurrentCulture();
+
+            return entry;
+        }
+
+        public virtual EntityEntry Attach([NotNull] object entity)
+        {
+            Check.NotNull(entity, "entity");
+
+            return SetEntityState(entity, EntityState.Unchanged);
+        }
+
+        public virtual EntityEntry Update([NotNull] object entity)
+        {
+            Check.NotNull(entity, "entity");
+
+            return SetEntityState(entity, EntityState.Modified);
+        }
+
+        public virtual EntityEntry Remove([NotNull] object entity)
+        {
+            Check.NotNull(entity, "entity");
+
+            return SetEntityState(entity, EntityState.Deleted);
+        }
+
+        private EntityEntry SetEntityState(object entity, EntityState entityState)
+        {
+            var entry = ChangeTracker.Entry(entity);
+
+            entry.State = entityState;
+
+            return entry;
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Add<TEntity>([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Added);
+        }
+
+        public virtual Task<IReadOnlyList<EntityEntry<TEntity>>> AddAsync<TEntity>([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return AddAsync(entities, default(CancellationToken));
+        }
+
+        public virtual async Task<IReadOnlyList<EntityEntry<TEntity>>> AddAsync<TEntity>(
+            [NotNull] TEntity[] entities,
+            CancellationToken cancellationToken)
+        {
+            Check.NotNull(entities, "entities");
+
+            var entries = GetOrCreateEntries(entities);
+
+            foreach (var entry in entries)
+            {
+                await entry.StateEntry
+                    .SetEntityStateAsync(EntityState.Added, cancellationToken)
+                    .WithCurrentCulture();
+            }
+
+            return entries;
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Attach<TEntity>([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Unchanged);
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Update<TEntity>([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Modified);
+        }
+
+        public virtual IReadOnlyList<EntityEntry<TEntity>> Remove<TEntity>([NotNull] params TEntity[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Deleted);
+        }
+
+        private List<EntityEntry<TEntity>> SetEntityStates<TEntity>(TEntity[] entities, EntityState entityState)
+        {
+            var entries = GetOrCreateEntries(entities);
+
+            foreach (var entry in entries)
+            {
+                entry.State = entityState;
+            }
+
+            return entries;
+        }
+
+        private List<EntityEntry<TEntity>> GetOrCreateEntries<TEntity>(IEnumerable<TEntity> entities)
+        {
+            var changeTracker = ChangeTracker;
+
+            return entities.Select(e => changeTracker.Entry(e)).ToList();
+        }
+
+        public virtual IReadOnlyList<EntityEntry> Add([NotNull] params object[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Added);
+        }
+
+        public virtual Task<IReadOnlyList<EntityEntry>> AddAsync([NotNull] params object[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return AddAsync(entities, default(CancellationToken));
+        }
+
+        public virtual async Task<IReadOnlyList<EntityEntry>> AddAsync(
+            [NotNull] object[] entities,
+            CancellationToken cancellationToken)
+        {
+            Check.NotNull(entities, "entities");
+
+            var entries = GetOrCreateEntries(entities);
+
+            foreach (var entry in entries)
+            {
+                await entry.StateEntry
+                    .SetEntityStateAsync(EntityState.Added, cancellationToken)
+                    .WithCurrentCulture();
+            }
+
+            return entries;
+        }
+
+        public virtual IReadOnlyList<EntityEntry> Attach([NotNull] params object[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Unchanged);
+        }
+
+        public virtual IReadOnlyList<EntityEntry> Update([NotNull] params object[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Modified);
+        }
+
+        public virtual IReadOnlyList<EntityEntry> Remove([NotNull] params object[] entities)
+        {
+            Check.NotNull(entities, "entities");
+
+            return SetEntityStates(entities, EntityState.Deleted);
+        }
+
+        private List<EntityEntry> SetEntityStates(object[] entities, EntityState entityState)
+        {
+            var entries = GetOrCreateEntries(entities);
+
+            foreach (var entry in entries)
+            {
+                entry.State = entityState;
+            }
+
+            return entries;
+        }
+
+        private List<EntityEntry> GetOrCreateEntries(IEnumerable<object> entities)
+        {
+            var changeTracker = ChangeTracker;
+
+            return entities.Select(e => changeTracker.Entry(e)).ToList();
         }
 
         public virtual Database Database
         {
-            get { return Configuration.Database; }
+            get { return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<DbContextService<Database>>().Service; }
         }
 
         public virtual ChangeTracker ChangeTracker
         {
-            get { return new ChangeTracker(Configuration.StateManager, Configuration.Services.ChangeDetector); }
+            get { return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<ChangeTracker>(); }
         }
 
         public virtual IModel Model
         {
-            get { return Configuration.Model; }
-        }
-
-        public virtual DbSet Set([NotNull] Type entityType)
-        {
-            Check.NotNull(entityType, "entityType");
-
-            // Note: Creating sets needs to be fast because it is done eagerly when a context instance
-            // is created so we avoid loading metadata to validate the type here.
-            return _sets.GetSet(this, entityType);
+            get { return _configuration.Value.ScopedServiceProvider.GetRequiredServiceChecked<DbContextService<IModel>>().Service; }
         }
 
         public virtual DbSet<TEntity> Set<TEntity>()
@@ -309,7 +516,7 @@ namespace Microsoft.Data.Entity
         {
             // Note: Creating sets needs to be fast because it is done eagerly when a context instance
             // is created so we avoid loading metadata to validate the type here.
-            return _sets.GetSet<TEntity>(this);
+            return _setInitializer.Value.CreateSet<TEntity>(this);
         }
     }
 }

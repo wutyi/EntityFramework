@@ -7,18 +7,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Entity.ChangeTracking;
 using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Metadata;
+using Microsoft.Data.Entity.Storage;
 
 namespace Microsoft.Data.Entity.FunctionalTests
 {
     public class ThrowingMonsterStateManager : StateManager
     {
         public ThrowingMonsterStateManager(
-            DbContextConfiguration configuration,
             StateEntryFactory factory,
             EntityKeyFactorySource entityKeyFactorySource,
             StateEntrySubscriber subscriber,
-            ValueGenerationManager valueGeneration)
-            : base(configuration, factory, entityKeyFactorySource, subscriber, valueGeneration)
+            StateEntryNotifier notifier,
+            ValueGenerationManager valueGeneration,
+            DbContextService<IModel> model,
+            DbContextService<DataStore> dataStore)
+            : base(factory, entityKeyFactorySource, subscriber, notifier, valueGeneration, model, dataStore)
         {
         }
 

@@ -8,8 +8,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata;
+using Microsoft.Data.Entity.Storage;
 using Microsoft.Data.Entity.Utilities;
+using System.Diagnostics;
 
 namespace Microsoft.Data.Entity.ChangeTracking
 {
@@ -23,8 +26,10 @@ namespace Microsoft.Data.Entity.ChangeTracking
         private readonly EntityKeyFactorySource _keyFactorySource;
         private readonly StateEntryFactory _factory;
         private readonly StateEntrySubscriber _subscriber;
+        private readonly StateEntryNotifier _notifier;
         private readonly ValueGenerationManager _valueGeneration;
-        private readonly DbContextConfiguration _configuration;
+        private readonly DbContextService<IModel> _model;
+        private readonly DbContextService<DataStore> _dataStore;
 
         /// <summary>
         ///     This constructor is intended only for use when creating test doubles that will override members
@@ -36,23 +41,34 @@ namespace Microsoft.Data.Entity.ChangeTracking
         }
 
         public StateManager(
-            [NotNull] DbContextConfiguration configuration,
             [NotNull] StateEntryFactory factory,
             [NotNull] EntityKeyFactorySource entityKeyFactorySource,
             [NotNull] StateEntrySubscriber subscriber,
-            [NotNull] ValueGenerationManager valueGeneration)
+            [NotNull] StateEntryNotifier notifier,
+            [NotNull] ValueGenerationManager valueGeneration,
+            [NotNull] DbContextService<IModel> model,
+            [NotNull] DbContextService<DataStore> dataStore)
         {
-            Check.NotNull(configuration, "configuration");
             Check.NotNull(factory, "factory");
             Check.NotNull(entityKeyFactorySource, "entityKeyFactorySource");
             Check.NotNull(subscriber, "subscriber");
+            Check.NotNull(notifier, "notifier");
+            Check.NotNull(model, "model");
+            Check.NotNull(dataStore, "dataStore");
             Check.NotNull(valueGeneration, "valueGeneration");
 
-            _configuration = configuration;
             _keyFactorySource = entityKeyFactorySource;
             _factory = factory;
             _subscriber = subscriber;
+            _notifier = notifier;
             _valueGeneration = valueGeneration;
+            _model = model;
+            _dataStore = dataStore;
+        }
+
+        public virtual StateEntryNotifier Notify
+        {
+            get { return _notifier; }
         }
 
         public virtual ValueGenerationManager ValueGeneration
@@ -68,7 +84,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
             // Issue #240
             var entity = entityType.HasClrType ? Activator.CreateInstance(entityType.Type) : null;
 
-            return _subscriber.SnapshotAndSubscribe(_factory.Create(entityType, entity));
+            return _subscriber.SnapshotAndSubscribe(_factory.Create(this, entityType, entity));
         }
 
         public virtual StateEntry GetOrCreateEntry([NotNull] object entity)
@@ -80,9 +96,9 @@ namespace Microsoft.Data.Entity.ChangeTracking
             StateEntry stateEntry;
             if (!_entityReferenceMap.TryGetValue(entity, out stateEntry))
             {
-                var entityType = Model.GetEntityType(entity.GetType());
+                var entityType = _model.Service.GetEntityType(entity.GetType());
 
-                stateEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(entityType, entity));
+                stateEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(this, entityType, entity));
 
                 _entityReferenceMap[entity] = stateEntry;
             }
@@ -107,7 +123,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
                 return;
             }
 
-            var newEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(entityType, entity, valueReader));
+            var newEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(this, entityType, entity, valueReader));
 
             _identityMap.Add(keyValue, newEntry);
             _entityReferenceMap[entity] = newEntry;
@@ -130,7 +146,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
                 return existingEntry;
             }
 
-            var newEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(entityType, valueReader));
+            var newEntry = _subscriber.SnapshotAndSubscribe(_factory.Create(this, entityType, valueReader));
 
             _identityMap.Add(keyValue, newEntry);
 
@@ -174,7 +190,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
 
             var entityType = entry.EntityType;
 
-            if (entry.Configuration.StateManager != this)
+            if (entry.StateManager != this)
             {
                 throw new InvalidOperationException(Strings.WrongStateManager(entityType.Name));
             }
@@ -228,11 +244,6 @@ namespace Microsoft.Data.Entity.ChangeTracking
             {
                 _identityMap.Remove(keyValue);
             }
-        }
-
-        public virtual IModel Model
-        {
-            get { return _configuration.Model; }
         }
 
         public virtual StateEntry GetPrincipal([NotNull] IPropertyBagEntry dependentEntry, [NotNull] IForeignKey foreignKey)
@@ -321,6 +332,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
                          && principalKeyValue.Equals(e.GetDependentKeyValue(foreignKey)));
         }
 
+        [DebuggerStepThrough]
         public virtual int SaveChanges()
         {
             var entriesToSave = StateEntries
@@ -400,8 +412,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
         {
             Check.NotNull(entriesToSave, "entriesToSave");
 
-            return _configuration.DataStore
-                .SaveChanges(entriesToSave);
+            return _dataStore.Service.SaveChanges(entriesToSave);
         }
 
         protected virtual async Task<int> SaveChangesAsync(
@@ -410,7 +421,7 @@ namespace Microsoft.Data.Entity.ChangeTracking
         {
             Check.NotNull(entriesToSave, "entriesToSave");
 
-            return await _configuration.DataStore
+            return await _dataStore.Service
                 .SaveChangesAsync(entriesToSave, cancellationToken)
                 .WithCurrentCulture();
         }

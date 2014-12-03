@@ -65,7 +65,7 @@ namespace Microsoft.Data.Entity.InMemory.FunctionalTests
 
             using (var context = new DbContext(serviceProvider, options))
             {
-                context.Delete(customer);
+                context.Remove(customer);
 
                 await context.SaveChangesAsync();
             }
@@ -106,13 +106,9 @@ namespace Microsoft.Data.Entity.InMemory.FunctionalTests
         private static Model CreateModel()
         {
             var model = new Model();
-            var modelBuilder = new BasicModelBuilder(model);
+            var modelBuilder = new ModelBuilder(model);
 
-            modelBuilder.Entity<Customer>(b =>
-                {
-                    b.Key(c => c.Id);
-                    b.Property(c => c.Name);
-                });
+            modelBuilder.Entity<Customer>();
 
             return model;
         }

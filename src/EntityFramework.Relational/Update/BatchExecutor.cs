@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using JetBrains.Annotations;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Relational.Utilities;
 using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.Logging;
@@ -16,7 +16,7 @@ namespace Microsoft.Data.Entity.Relational.Update
     public class BatchExecutor
     {
         private readonly RelationalTypeMapper _typeMapper;
-        private readonly LazyRef<DbContext> _context;
+        private readonly DbContextService<DbContext> _context;
         private readonly LazyRef<ILogger> _logger;
 
         /// <summary>
@@ -30,7 +30,7 @@ namespace Microsoft.Data.Entity.Relational.Update
 
         public BatchExecutor(
             [NotNull] RelationalTypeMapper typeMapper,
-            [NotNull] LazyRef<DbContext> context,
+            [NotNull] DbContextService<DbContext> context,
             [NotNull] ILoggerFactory loggerFactory)
         {
             Check.NotNull(typeMapper, "typeMapper");
@@ -69,7 +69,7 @@ namespace Microsoft.Data.Entity.Relational.Update
                     rowsAffected += commandbatch.Execute(
                         connection.Transaction,
                         _typeMapper,
-                        _context.Value,
+                        _context.Service,
                         Logger);
                 }
 
@@ -113,7 +113,7 @@ namespace Microsoft.Data.Entity.Relational.Update
                     rowsAffected += await commandbatch.ExecuteAsync(
                         connection.Transaction,
                         _typeMapper,
-                        _context.Value,
+                        _context.Service,
                         Logger, cancellationToken)
                         .WithCurrentCulture();
                 }

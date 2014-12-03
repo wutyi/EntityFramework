@@ -519,14 +519,12 @@ namespace Microsoft.Data.Entity.FunctionalTests
         {
             using (var context = CreateF1Context())
             {
-                var entry =
-                    context.ChangeTracker.Entry(
-                        context.Drivers.Add(
-                            new Driver
-                                {
-                                    Name = "Larry David",
-                                    TeamId = Team.Ferrari
-                                }));
+                var entry = context.Drivers.Add(
+                    new Driver
+                        {
+                            Name = "Larry David",
+                            TeamId = Team.Ferrari
+                        });
 
                 Assert.Equal("Can't reload an added entity",
                     Assert.Throws<InvalidOperationException>(() => entry.Reload(context)).Message);
@@ -538,14 +536,12 @@ namespace Microsoft.Data.Entity.FunctionalTests
         {
             using (var context = CreateF1Context())
             {
-                var entry =
-                    context.ChangeTracker.Entry(
-                        context.Drivers.Add(
-                            new Driver
-                                {
-                                    Name = "Larry David",
-                                    TeamId = Team.Ferrari
-                                }));
+                var entry = context.Drivers.Add(
+                    new Driver
+                        {
+                            Name = "Larry David",
+                            TeamId = Team.Ferrari
+                        });
                 entry.State = EntityState.Unknown;
 
                 Assert.Equal("Can't reload an unknown entity",
@@ -596,14 +592,12 @@ namespace Microsoft.Data.Entity.FunctionalTests
         {
             using (var context = CreateF1Context())
             {
-                var entry =
-                    context.ChangeTracker.Entry(
-                        context.Drivers.Add(
-                            new Driver
-                                {
-                                    Name = "Larry David",
-                                    TeamId = Team.Ferrari
-                                }));
+                var entry = context.Drivers.Add(
+                    new Driver
+                        {
+                            Name = "Larry David",
+                            TeamId = Team.Ferrari
+                        });
 
                 Assert.Equal("Can't reload an added entity",
                     (await Assert.ThrowsAsync<InvalidOperationException>(() => entry.ReloadAsync(context))).Message);
@@ -615,14 +609,12 @@ namespace Microsoft.Data.Entity.FunctionalTests
         {
             using (var context = CreateF1Context())
             {
-                var entry =
-                    context.ChangeTracker.Entry(
-                        context.Drivers.Add(
-                            new Driver
-                                {
-                                    Name = "Larry David",
-                                    TeamId = Team.Ferrari
-                                }));
+                var entry = context.Drivers.Add(
+                    new Driver
+                        {
+                            Name = "Larry David",
+                            TeamId = Team.Ferrari
+                        });
                 entry.State = EntityState.Unknown;
 
                 Assert.Equal("Can't reload an unknown entity",
@@ -736,34 +728,31 @@ namespace Microsoft.Data.Entity.FunctionalTests
             Action<F1Context> storeChange, Action<F1Context> clientChange,
             Action<F1Context, DbUpdateException> resolver, Action<F1Context> validator)
         {
-            using (TestStore)
+            using (var context = CreateF1Context())
             {
-                using (var context = CreateF1Context())
+                clientChange(context);
+
+                using (var innerContext = CreateF1Context())
                 {
-                    clientChange(context);
+                    storeChange(innerContext);
+                    await innerContext.SaveChangesAsync();
+                }
 
-                    using (var innerContext = CreateF1Context())
+                var updateException = await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
+
+                using (var resolverContext = CreateF1Context())
+                {
+                    // TODO: pass in 'context' when no tracking queries are available
+                    resolver(resolverContext, updateException);
+                }
+
+                using (var validationContext = CreateF1Context())
+                {
+                    if (validator != null)
                     {
-                        storeChange(innerContext);
-                        await innerContext.SaveChangesAsync();
-                    }
+                        await context.SaveChangesAsync();
 
-                    var updateException = await Assert.ThrowsAnyAsync<DbUpdateException>(() => context.SaveChangesAsync());
-
-                    using (var resolverContext = CreateF1Context())
-                    {
-                        // TODO: pass in 'context' when no tracking queries are available
-                        resolver(resolverContext, updateException);
-                    }
-
-                    using (var validationContext = CreateF1Context())
-                    {
-                        if (validator != null)
-                        {
-                            await context.SaveChangesAsync();
-
-                            validator(validationContext);
-                        }
+                        validator(validationContext);
                     }
                 }
             }

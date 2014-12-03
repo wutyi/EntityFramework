@@ -5,7 +5,6 @@ using System;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.DependencyInjection.Fallback;
 using Moq;
 using Xunit;
 
@@ -13,22 +12,6 @@ namespace Microsoft.Data.Entity.Tests
 {
     public class DbSetInitializerTest
     {
-        [Fact]
-        public void Members_check_arguments()
-        {
-            Assert.Equal(
-                "setFinder",
-                // ReSharper disable once AssignNullToNotNullAttribute
-                Assert.Throws<ArgumentNullException>(() => new DbSetInitializer(null, new ClrPropertySetterSource())).ParamName);
-
-            var initializer = new DbSetInitializer(new Mock<DbSetFinder>().Object, new ClrPropertySetterSource());
-
-            Assert.Equal(
-                "context",
-                // ReSharper disable once AssignNullToNotNullAttribute
-                Assert.Throws<ArgumentNullException>(() => initializer.InitializeSets(null)).ParamName);
-        }
-
         [Fact]
         public void Initializes_all_entity_set_properties_with_setters()
         {
@@ -42,10 +25,10 @@ namespace Microsoft.Data.Entity.Tests
                         new DbSetFinder.DbSetProperty(typeof(JustAContext), "Four", typeof(string), hasSetter: false)
                     });
 
-            var serviceProvider = new ServiceCollection()
-                .AddEntityFramework().ServiceCollection
-                .AddInstance(new DbSetInitializer(setFinderMock.Object, new ClrPropertySetterSource()))
-                .BuildServiceProvider();
+            var customServices = new ServiceCollection()
+                .AddInstance(new DbSetInitializer(setFinderMock.Object, new ClrPropertySetterSource(), new DbSetSource()));
+
+            var serviceProvider = TestHelpers.CreateServiceProvider(customServices);
 
             var options = new DbContextOptions();
 

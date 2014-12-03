@@ -5,7 +5,6 @@ using JetBrains.Annotations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Migrations.Utilities;
 using Microsoft.Data.Entity.Relational;
-using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.DependencyInjection;
 
 namespace Microsoft.Data.Entity.Migrations
@@ -18,9 +17,10 @@ namespace Microsoft.Data.Entity.Migrations
 
             builder
                 .AddRelational().ServiceCollection
-                .AddScoped<MigrationAssembly>()
-                .AddScoped<HistoryRepository>()
-                .AddScoped<LazyRef<Migrator>>(MigrationsDataStoreServices.MigratorFactory);
+                .TryAdd(new ServiceCollection()
+                    .AddScoped<MigrationAssembly>()
+                    .AddScoped<HistoryRepository>()
+                    .AddScoped(MigrationsDataStoreServices.MigratorFactory));
 
             return builder;
         }

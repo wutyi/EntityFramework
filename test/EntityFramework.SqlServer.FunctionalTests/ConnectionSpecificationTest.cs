@@ -4,15 +4,14 @@
 using System;
 using System.Data.SqlClient;
 using System.Linq;
-using System.Reflection;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
-using Microsoft.Data.Entity.Relational;
 using Microsoft.Data.Entity.SqlServer.FunctionalTests.TestModels;
 using Microsoft.Framework.ConfigurationModel;
 using Microsoft.Framework.DependencyInjection;
 using Microsoft.Framework.DependencyInjection.Fallback;
 using Xunit;
+using RelationalStrings = Microsoft.Data.Entity.Relational.Strings;
 
 namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 {
@@ -31,7 +30,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<StringInOnConfiguringContext>())
+                using (var context = serviceProvider.GetRequiredService<StringInOnConfiguringContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -72,7 +71,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<ConnectionInOnConfiguringContext>())
+                using (var context = serviceProvider.GetRequiredService<ConnectionInOnConfiguringContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -138,7 +137,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<StringInConfigContext>())
+                using (var context = serviceProvider.GetRequiredService<StringInConfigContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -168,7 +167,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<StringInConfigContext>())
+                using (var context = serviceProvider.GetRequiredService<StringInConfigContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -191,10 +190,10 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<StringInConfigContext>())
+            using (var context = serviceProvider.GetRequiredService<StringInConfigContext>())
             {
                 Assert.Equal(
-                    GetRelationalString("NoConnectionOrConnectionString"),
+                    RelationalStrings.NoConnectionOrConnectionString,
                     Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
             }
         }
@@ -210,10 +209,10 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<StringInConfigContext>())
+            using (var context = serviceProvider.GetRequiredService<StringInConfigContext>())
             {
                 Assert.Equal(
-                    GetRelationalString("NoConnectionOrConnectionString"),
+                    RelationalStrings.NoConnectionOrConnectionString,
                     Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
             }
         }
@@ -224,7 +223,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
             using (var context = new StringInConfigContext())
             {
                 Assert.Equal(
-                    GetRelationalString("NoConnectionOrConnectionString"),
+                    RelationalStrings.NoConnectionOrConnectionString,
                     Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
             }
         }
@@ -263,7 +262,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<NoUseSqlServerContext>())
+                using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -293,7 +292,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<NoUseSqlServerContext>())
+                using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -316,10 +315,10 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<NoUseSqlServerContext>())
+            using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
             {
                 Assert.Equal(
-                    GetRelationalString("NoConnectionOrConnectionString"),
+                    RelationalStrings.NoConnectionOrConnectionString,
                     Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
             }
         }
@@ -335,10 +334,10 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             var serviceProvider = serviceCollection.BuildServiceProvider();
 
-            using (var context = serviceProvider.GetService<NoUseSqlServerContext>())
+            using (var context = serviceProvider.GetRequiredService<NoUseSqlServerContext>())
             {
                 Assert.Equal(
-                    GetRelationalString("NoConnectionOrConnectionString"),
+                    RelationalStrings.NoConnectionOrConnectionString,
                     Assert.Throws<InvalidOperationException>(() => context.Customers.Any()).Message);
             }
         }
@@ -365,38 +364,38 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
                 MultipleProvidersContext context1;
                 MultipleProvidersContext context2;
 
-                using (var serviceScope = serviceProvider.GetService<IServiceScopeFactory>().CreateScope())
+                using (var serviceScope = serviceProvider.GetRequiredService<IServiceScopeFactory>().CreateScope())
                 {
-                    using (context1 = serviceScope.ServiceProvider.GetService<MultipleProvidersContext>())
+                    using (context1 = serviceScope.ServiceProvider.GetRequiredService<MultipleProvidersContext>())
                     {
                         context1.UseSqlServer = true;
 
                         Assert.True(context1.Customers.Any());
                     }
 
-                    using (var context1B = serviceScope.ServiceProvider.GetService<MultipleProvidersContext>())
+                    using (var context1B = serviceScope.ServiceProvider.GetRequiredService<MultipleProvidersContext>())
                     {
                         Assert.Same(context1, context1B);
                     }
 
-                    var someService = serviceScope.ServiceProvider.GetService<SomeService>();
+                    var someService = serviceScope.ServiceProvider.GetRequiredService<SomeService>();
                     Assert.Same(context1, someService.Context);
                 }
-                using (var serviceScope = serviceProvider.GetService<IServiceScopeFactory>().CreateScope())
+                using (var serviceScope = serviceProvider.GetRequiredService<IServiceScopeFactory>().CreateScope())
                 {
-                    using (context2 = serviceScope.ServiceProvider.GetService<MultipleProvidersContext>())
+                    using (context2 = serviceScope.ServiceProvider.GetRequiredService<MultipleProvidersContext>())
                     {
                         context2.UseSqlServer = false;
 
                         Assert.False(context2.Customers.Any());
                     }
 
-                    using (var context2B = serviceScope.ServiceProvider.GetService<MultipleProvidersContext>())
+                    using (var context2B = serviceScope.ServiceProvider.GetRequiredService<MultipleProvidersContext>())
                     {
                         Assert.Same(context2, context2B);
                     }
 
-                    var someService = serviceScope.ServiceProvider.GetService<SomeService>();
+                    var someService = serviceScope.ServiceProvider.GetRequiredService<SomeService>();
                     Assert.Same(context2, someService.Context);
                 }
 
@@ -466,7 +465,7 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<OptionsContext>())
+                using (var context = serviceProvider.GetRequiredService<OptionsContext>())
                 {
                     Assert.True(context.Customers.Any());
                 }
@@ -533,12 +532,12 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
 
             using (await SqlServerNorthwindContext.GetSharedStoreAsync())
             {
-                using (var context = serviceProvider.GetService<MultipleContext1>())
+                using (var context = serviceProvider.GetRequiredService<MultipleContext1>())
                 {
                     Assert.True(context.Customers.Any());
                 }
 
-                using (var context = serviceProvider.GetService<MultipleContext2>())
+                using (var context = serviceProvider.GetRequiredService<MultipleContext2>())
                 {
                     Assert.False(context.Customers.Any());
                 }
@@ -616,10 +615,10 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
             {
                 // TODO: Make this work or provide better exception
                 // Issue #935
-                Assert.Throws<Exception>(()
+                Assert.Throws<InvalidOperationException>(()
                     =>
                     {
-                        using (var context = serviceProvider.GetService<NonGenericOptionsContext>())
+                        using (var context = serviceProvider.GetRequiredService<NonGenericOptionsContext>())
                         {
                             Assert.True(context.Customers.Any());
                         }
@@ -697,12 +696,6 @@ namespace Microsoft.Data.Entity.SqlServer.FunctionalTests
             protected override void ApplyServices(EntityServicesBuilder builder)
             {
             }
-        }
-
-        private static string GetRelationalString(string stringName)
-        {
-            var strings = typeof(RelationalConnection).GetTypeInfo().Assembly.GetType(typeof(RelationalConnection).Namespace + ".Strings");
-            return (string)strings.GetTypeInfo().GetDeclaredProperty(stringName).GetGetMethod().Invoke(null, null);
         }
     }
 }

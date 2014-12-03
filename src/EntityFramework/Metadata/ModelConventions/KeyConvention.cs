@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Metadata.Internal;
 using Microsoft.Data.Entity.Utilities;
 
@@ -62,13 +63,23 @@ namespace Microsoft.Data.Entity.Metadata.ModelConventions
 
             var property = propertyBuilder.Metadata;
             if (property.PropertyType == typeof(Guid)
-                || property.PropertyType.IsInteger())
+                || IsCommonInteger(property.PropertyType))
             {
                 propertyBuilder.GenerateValueOnAdd(true, ConfigurationSource.Convention);
             }
 
             // TODO: Nullable, Sequence
             // Issue #213
+        }
+
+        private static bool IsCommonInteger(Type type)
+        {
+            type = type.UnwrapNullableType();
+
+            return type == typeof(int)
+                   || type == typeof(long)
+                   || type == typeof(short)
+                   || type == typeof(byte);
         }
     }
 }

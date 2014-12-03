@@ -3,8 +3,7 @@
 
 using System;
 using JetBrains.Annotations;
-using Microsoft.Data.Entity.Metadata;
-using Microsoft.Data.Entity.Relational.Model;
+using Microsoft.Data.Entity.Migrations.Model;
 
 namespace Microsoft.Data.Entity.Migrations.Builders
 {
@@ -17,6 +16,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] byte[] defaultValue = null,
             [CanBeNull] string defaultSql = null,
             bool timestamp = false,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -28,6 +28,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 maxLength,
                 fixedLength: fixedLength,
                 timestamp: timestamp,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -36,6 +37,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] bool? nullable = null,
             [CanBeNull] bool? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -44,6 +46,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 nullable,
                 defaultValue,
                 defaultSql,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -53,6 +56,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool identity = false,
             [CanBeNull] byte? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -62,6 +66,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 identity: identity,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -71,6 +76,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] byte? precision = null,
             [CanBeNull] DateTime? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -80,6 +86,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 precision: precision,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -90,6 +97,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] byte? scale = null,
             [CanBeNull] decimal? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null,
             bool identity = false)
@@ -101,6 +109,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultSql,
                 precision: precision,
                 scale: scale,
+                computed: computed,
                 name: name,
                 dataType: dataType,
                 identity: identity);
@@ -110,6 +119,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] bool? nullable = null,
             [CanBeNull] double? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -118,6 +128,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 nullable,
                 defaultValue,
                 defaultSql,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -127,6 +138,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool identity = false,
             [CanBeNull] Guid? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -136,6 +148,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 identity: identity,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -144,6 +157,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] bool? nullable = null,
             [CanBeNull] float? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -152,6 +166,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 nullable,
                 defaultValue,
                 defaultSql,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -161,6 +176,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool identity = false,
             [CanBeNull] short? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -170,6 +186,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 identity: identity,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -179,6 +196,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool identity = false,
             [CanBeNull] int? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -188,6 +206,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 identity: identity,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -197,6 +216,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool identity = false,
             [CanBeNull] long? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -206,6 +226,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 identity: identity,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -217,6 +238,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] bool? unicode = null,
             [CanBeNull] string defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -228,6 +250,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 maxLength,
                 fixedLength: fixedLength,
                 unicode: unicode,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -237,6 +260,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] byte? precision = null,
             [CanBeNull] TimeSpan? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -246,6 +270,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 precision: precision,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -255,6 +280,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             [CanBeNull] byte? precision = null,
             [CanBeNull] DateTimeOffset? defaultValue = null,
             [CanBeNull] string defaultSql = null,
+            bool computed = false,
             [CanBeNull] string name = null,
             [CanBeNull] string dataType = null)
         {
@@ -264,6 +290,7 @@ namespace Microsoft.Data.Entity.Migrations.Builders
                 defaultValue,
                 defaultSql,
                 precision: precision,
+                computed: computed,
                 name: name,
                 dataType: dataType);
         }
@@ -280,16 +307,19 @@ namespace Microsoft.Data.Entity.Migrations.Builders
             bool? fixedLength = null,
             bool identity = false,
             bool timestamp = false,
+            bool computed = false,
             string name = null,
             string dataType = null)
         {
             var column
-                = new Column(name, clrType, dataType)
+                = new Column(name, clrType)
                     {
+                        DataType = dataType,
                         DefaultValue = defaultValue,
                         DefaultSql = defaultSql,
-                        GenerateValueOnAdd =  identity,
+                        IsIdentity =  identity,
                         IsTimestamp = timestamp,
+                        IsComputed = computed,
                         MaxLength = maxLength,
                         Precision = precision,
                         Scale = scale,

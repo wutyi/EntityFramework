@@ -13,9 +13,7 @@ using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
 using Microsoft.Data.Entity.Migrations.Model;
 using Microsoft.Data.Entity.Relational.Metadata;
-using Microsoft.Data.Entity.Relational.Model;
 using Microsoft.Data.Entity.Utilities;
-using Sequence = Microsoft.Data.Entity.Relational.Metadata.Sequence;
 
 namespace Microsoft.Data.Entity.Commands.Migrations
 {
@@ -531,27 +529,28 @@ namespace Microsoft.Data.Entity.Commands.Migrations
             Check.NotNull(addDefaultConstraintOperation, "addDefaultConstraintOperation");
             Check.NotNull(stringBuilder, "stringBuilder");
 
-            stringBuilder
-                .Append("AddDefaultConstraint(")
-                .Append(GenerateLiteral(addDefaultConstraintOperation.TableName))
-                .Append(", ")
-                .Append(GenerateLiteral(addDefaultConstraintOperation.ColumnName))
-                .Append(", DefaultConstraint.");
-
             if (addDefaultConstraintOperation.DefaultValue != null)
             {
                 stringBuilder
-                    .Append("Value(")
+                    .Append("AddDefaultValue(")
+                    .Append(GenerateLiteral(addDefaultConstraintOperation.TableName))
+                    .Append(", ")
+                    .Append(GenerateLiteral(addDefaultConstraintOperation.ColumnName))
+                    .Append(", ")
                     .Append(GenerateLiteral((dynamic)addDefaultConstraintOperation.DefaultValue));
             }
             else
             {
                 stringBuilder
-                    .Append("Sql(")
+                    .Append("AddDefaultExpression(")
+                    .Append(GenerateLiteral(addDefaultConstraintOperation.TableName))
+                    .Append(", ")
+                    .Append(GenerateLiteral(addDefaultConstraintOperation.ColumnName))
+                    .Append(", ")
                     .Append(GenerateLiteral(addDefaultConstraintOperation.DefaultSql));
             }
 
-            stringBuilder.Append("))");
+            stringBuilder.Append(")");
         }
 
         public override void Generate(DropDefaultConstraintOperation dropDefaultConstraintOperation, IndentedStringBuilder stringBuilder)
@@ -630,20 +629,27 @@ namespace Microsoft.Data.Entity.Commands.Migrations
             Check.NotNull(addForeignKeyOperation, "addForeignKeyOperation");
             Check.NotNull(stringBuilder, "stringBuilder");
 
-            stringBuilder
-                .Append("AddForeignKey(")
-                .Append(GenerateLiteral(addForeignKeyOperation.TableName))
-                .Append(", ")
-                .Append(GenerateLiteral(addForeignKeyOperation.ForeignKeyName))
-                .Append(", new[] { ")
-                .Append(addForeignKeyOperation.ColumnNames.Select(GenerateLiteral).Join())
-                .Append(" }, ")
-                .Append(GenerateLiteral(addForeignKeyOperation.ReferencedTableName))
-                .Append(", new[] { ")
-                .Append(addForeignKeyOperation.ReferencedColumnNames.Select(GenerateLiteral).Join())
-                .Append(" }, cascadeDelete: ")
-                .Append(GenerateLiteral(addForeignKeyOperation.CascadeDelete))
-                .Append(")");
+            stringBuilder.AppendLine("AddForeignKey(");
+
+            using (stringBuilder.Indent())
+            {
+                stringBuilder
+                    .Append(GenerateLiteral(addForeignKeyOperation.TableName))
+                    .AppendLine(",")
+                    .Append(GenerateLiteral(addForeignKeyOperation.ForeignKeyName))
+                    .AppendLine(",")
+                    .Append("new[] { ")
+                    .Append(addForeignKeyOperation.ColumnNames.Select(GenerateLiteral).Join())
+                    .AppendLine(" },")
+                    .Append(GenerateLiteral(addForeignKeyOperation.ReferencedTableName))
+                    .AppendLine(",")
+                    .Append("new[] { ")
+                    .Append(addForeignKeyOperation.ReferencedColumnNames.Select(GenerateLiteral).Join())
+                    .AppendLine(" },")
+                    .Append("cascadeDelete: ")
+                    .Append(GenerateLiteral(addForeignKeyOperation.CascadeDelete))
+                    .Append(")");
+            }
         }
 
         public override void Generate(DropForeignKeyOperation dropForeignKeyOperation, IndentedStringBuilder stringBuilder)
@@ -913,7 +919,7 @@ namespace Microsoft.Data.Entity.Commands.Migrations
                 args.Add("unicode: " + GenerateLiteral(column.IsUnicode.Value));
             }
 
-            if (column.GenerateValueOnAdd)
+            if (column.IsIdentity)
             {
                 args.Add("identity: " + GenerateLiteral(true));
             }
@@ -926,6 +932,11 @@ namespace Microsoft.Data.Entity.Commands.Migrations
             if (!string.IsNullOrWhiteSpace(column.DefaultSql))
             {
                 args.Add("defaultSql: " + GenerateLiteral(column.DefaultSql));
+            }
+
+            if (column.IsComputed)
+            {
+                args.Add("computed: " + GenerateLiteral(true));
             }
 
             if (column.IsTimestamp)
@@ -982,6 +993,12 @@ namespace Microsoft.Data.Entity.Commands.Migrations
         protected virtual string TranslateColumnType([NotNull] Type clrType)
         {
             Check.NotNull(clrType, "clrType");
+
+            var underlyingType = Nullable.GetUnderlyingType(clrType);
+            if (underlyingType != null)
+            {
+                clrType = underlyingType;
+            }
 
             if (clrType.GetTypeInfo().IsEnum)
             {

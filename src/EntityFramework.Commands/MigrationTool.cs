@@ -9,10 +9,12 @@ using System.Reflection;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Commands.Migrations;
 using Microsoft.Data.Entity.Commands.Utilities;
+using Microsoft.Data.Entity.Infrastructure;
+using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Migrations;
 using Microsoft.Data.Entity.Migrations.Infrastructure;
-using Microsoft.Data.Entity.Relational;
 using Microsoft.Data.Entity.Utilities;
+using Microsoft.Framework.DependencyInjection;
 using Microsoft.Framework.Logging;
 
 namespace Microsoft.Data.Entity.Commands
@@ -47,36 +49,20 @@ namespace Microsoft.Data.Entity.Commands
             var contextType = GetContextType(contextTypeName);
             using (var context = CreateContext(contextType))
             {
-                var configuration = context.Configuration;
-
-                var extension = RelationalOptionsExtension.Extract(configuration.ContextOptions);
-                if (extension.MigrationNamespace == null)
-                {
-                    extension.MigrationNamespace = rootNamespace + ".Migrations";
-                }
+                var scopedServiceProvider = ((IDbContextServices)context).ScopedServiceProvider;
+                var options = scopedServiceProvider.GetRequiredService<DbContextService<IDbContextOptions>>();
+                var model = scopedServiceProvider.GetRequiredService<DbContextService<IModel>>();
 
                 var migrator = CreateMigrator(context);
                 var scaffolder = new MigrationScaffolder(
-                    configuration,
+                    context,
+                    options.Service,
+                    model.Service,
                     migrator.MigrationAssembly,
                     migrator.ModelDiffer,
                     new CSharpMigrationCodeGenerator(new CSharpModelCodeGenerator()));
 
-                var migration = scaffolder.ScaffoldMigration(migrationName);
-
-                // Derive default directory from namespace
-                if (migration.Directory == null)
-                {
-                    var directory = migration.MigrationNamespace;
-                    if (directory.StartsWith(rootNamespace + '.'))
-                    {
-                        directory = directory.Substring(rootNamespace.Length + 1);
-                    }
-
-                    migration.Directory = directory.Replace('.', Path.DirectorySeparatorChar);
-                }
-
-                return migration;
+                return scaffolder.ScaffoldMigration(migrationName, rootNamespace);
             }
         }
 
@@ -90,18 +76,18 @@ namespace Microsoft.Data.Entity.Commands
             var migrationDir = Path.Combine(projectDir, migration.Directory);
             Directory.CreateDirectory(migrationDir);
 
-            // TODO: Get from migration (set in MigrationScaffolder)
-            var extension = ".cs";
-
-            var userCodeFile = Path.Combine(migrationDir, migration.MigrationId + extension);
+            var userCodeFile = Path.Combine(migrationDir, migration.MigrationId + migration.Language);
             File.WriteAllText(userCodeFile, migration.MigrationCode);
             yield return userCodeFile;
 
-            var designerCodeFile = Path.Combine(migrationDir, migration.MigrationId + ".Designer" + extension);
+            var designerCodeFile = Path.Combine(migrationDir, migration.MigrationId + ".Designer" + migration.Language);
             File.WriteAllText(designerCodeFile, migration.MigrationMetadataCode);
             yield return designerCodeFile;
 
-            var modelSnapshotFile = Path.Combine(migrationDir, migration.SnapshotModelClass + extension);
+            var modelSnapshotFile = Path.Combine(
+                projectDir,
+                migration.ModelSnapshotDirectory,
+                migration.SnapshotModelClass + migration.Language);
             File.WriteAllText(modelSnapshotFile, migration.SnapshotModelCode);
             yield return modelSnapshotFile;
         }
@@ -175,14 +161,17 @@ namespace Microsoft.Data.Entity.Commands
         {
             var context = ContextTool.CreateContext(type);
 
-            // TODO: Decouple from DbContextConfiguration (Issue #641)
-            var loggerFactory = (ILoggerFactory)context.Configuration.Services.ServiceProvider.GetService(typeof(ILoggerFactory));
+            var scopedServiceProvider = ((IDbContextServices)context).ScopedServiceProvider;
+            var options = scopedServiceProvider.GetRequiredService<DbContextService<IDbContextOptions>>();
+
+            var loggerFactory = scopedServiceProvider.GetRequiredService<ILoggerFactory>();
             loggerFactory.AddProvider(_loggerProvider);
 
-            var extension = RelationalOptionsExtension.Extract(context.Configuration.ContextOptions);
-            if (extension.MigrationAssembly == null)
+            var extension = MigrationsOptionsExtension.Extract(options.Service);
+            if (extension == null || extension.MigrationAssembly == null)
             {
-                extension.MigrationAssembly = _assembly;
+                options.Service.AddOrUpdateExtension<MigrationsOptionsExtension>(
+                    x => x.MigrationAssembly = _assembly);
             }
 
             return context;
@@ -190,8 +179,7 @@ namespace Microsoft.Data.Entity.Commands
 
         private Migrator CreateMigrator(DbContext context)
         {
-            var services = (MigrationsDataStoreServices)context.Configuration.DataStoreServices;
-            return services.Migrator;
+            return ((IDbContextServices)context).ScopedServiceProvider.GetRequiredService<DbContextService<Migrator>>().Service;
         }
 
         private IEnumerable<Type> GetMigrationTypes()

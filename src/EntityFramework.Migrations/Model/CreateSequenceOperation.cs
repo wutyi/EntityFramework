@@ -37,16 +37,6 @@ namespace Microsoft.Data.Entity.Migrations.Model
             _type = type ?? Sequence.DefaultType;
         }
 
-        public CreateSequenceOperation([NotNull] Relational.Model.Sequence sequence)
-        {
-            Check.NotNull(sequence, "sequence");
-
-            _sequenceName = sequence.Name;
-            _startValue = sequence.StartWith;
-            _incrementBy = sequence.IncrementBy;
-            _type = sequence.Type;
-        }
-
         public virtual SchemaQualifiedName SequenceName
         {
             get { return _sequenceName; }
@@ -85,12 +75,12 @@ namespace Microsoft.Data.Entity.Migrations.Model
             visitor.Visit(this, context);
         }
 
-        public override void GenerateSql(MigrationOperationSqlGenerator generator, IndentedStringBuilder stringBuilder)
+        public override void GenerateSql(MigrationOperationSqlGenerator generator, SqlBatchBuilder batchBuilder)
         {
             Check.NotNull(generator, "generator");
-            Check.NotNull(stringBuilder, "stringBuilder");
+            Check.NotNull(batchBuilder, "batchBuilder");
 
-            generator.Generate(this, stringBuilder);
+            generator.Generate(this, batchBuilder);
         }
 
         public override void GenerateCode(MigrationCodeGenerator generator, IndentedStringBuilder stringBuilder)

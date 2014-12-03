@@ -2,8 +2,6 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
-using System.Linq;
-using System.Reflection;
 using Microsoft.Data.Entity.ChangeTracking;
 using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
@@ -21,36 +19,115 @@ namespace Microsoft.Data.Entity.Tests
 
         public static DbContextOptions CreateOptions()
         {
-            return new DbContextOptions();
+            return new DbContextOptions().UseProviderOptions();
         }
 
-        public static IServiceProvider CreateServiceProvider()
+        public static IServiceProvider CreateServiceProvider(IServiceCollection customServices = null)
         {
             var services = new ServiceCollection();
             services
                 .AddEntityFramework()
                 .AddProviderServices();
+
+            if (customServices != null)
+            {
+                foreach (var service in customServices)
+                {
+                    services.Add(service);
+                }
+            }
+
             return services.BuildServiceProvider();
         }
 
-        public static DbContextConfiguration CreateContextConfiguration(IServiceProvider serviceProvider, IModel model)
+        public static DbContext CreateContext(IServiceProvider serviceProvider, IModel model)
         {
-            return new DbContext(serviceProvider, CreateOptions(model)).Configuration;
+            return new DbContext(serviceProvider, CreateOptions(model));
         }
 
-        public static DbContextConfiguration CreateContextConfiguration(IServiceProvider serviceProvider)
+        public static DbContext CreateContext(IServiceProvider serviceProvider, DbContextOptions options)
         {
-            return new DbContext(serviceProvider, CreateOptions()).Configuration;
+            return new DbContext(serviceProvider, options);
         }
 
-        public static DbContextConfiguration CreateContextConfiguration(IModel model)
+        public static DbContext CreateContext(IServiceProvider serviceProvider)
         {
-            return new DbContext(CreateServiceProvider(), CreateOptions(model)).Configuration;
+            return new DbContext(serviceProvider, CreateOptions());
         }
 
-        public static DbContextConfiguration CreateContextConfiguration()
+        public static DbContext CreateContext(IModel model)
         {
-            return new DbContext(CreateServiceProvider(), CreateOptions()).Configuration;
+            return new DbContext(CreateServiceProvider(), CreateOptions(model));
+        }
+
+        public static DbContext CreateContext(DbContextOptions options)
+        {
+            return new DbContext(CreateServiceProvider(), options);
+        }
+
+        public static DbContext CreateContext()
+        {
+            return new DbContext(CreateServiceProvider(), CreateOptions());
+        }
+
+        public static DbContext CreateContext(IServiceCollection customServices, IModel model)
+        {
+            return new DbContext(CreateServiceProvider(customServices), CreateOptions(model));
+        }
+
+        public static DbContext CreateContext(IServiceCollection customServices, DbContextOptions options)
+        {
+            return new DbContext(CreateServiceProvider(customServices), options);
+        }
+
+        public static DbContext CreateContext(IServiceCollection customServices)
+        {
+            return new DbContext(CreateServiceProvider(customServices), CreateOptions());
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceProvider serviceProvider, IModel model)
+        {
+            return ((IDbContextServices)CreateContext(serviceProvider, model)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceProvider serviceProvider, DbContextOptions options)
+        {
+            return ((IDbContextServices)CreateContext(serviceProvider, options)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceProvider serviceProvider)
+        {
+            return ((IDbContextServices)CreateContext(serviceProvider)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IModel model)
+        {
+            return ((IDbContextServices)CreateContext(model)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(DbContextOptions options)
+        {
+            return ((IDbContextServices)CreateContext(options)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices()
+        {
+            return ((IDbContextServices)CreateContext()).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceCollection customServices, IModel model)
+        {
+            return ((IDbContextServices)CreateContext(customServices, model)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceCollection customServices, DbContextOptions options)
+        {
+            return ((IDbContextServices)CreateContext(customServices, options)).ScopedServiceProvider;
+        }
+
+        public static IServiceProvider CreateContextServices(IServiceCollection customServices)
+        {
+            return ((IDbContextServices)CreateContext(customServices)).ScopedServiceProvider;
         }
 
         public static Model BuildModelFor<TEntity>()
@@ -64,24 +141,13 @@ namespace Microsoft.Data.Entity.Tests
             IModel model, EntityState entityState = EntityState.Unknown, TEntity entity = null)
             where TEntity : class, new()
         {
-            var entry = CreateContextConfiguration(model)
-                .Services
-                .StateEntryFactory
-                .Create(model.GetEntityType(typeof(TEntity)), entity ?? new TEntity());
+            var entry = CreateContextServices(model)
+                .GetRequiredService<StateManager>()
+                .GetOrCreateEntry(entity ?? new TEntity());
 
             entry.EntityState = entityState;
 
             return entry;
-        }
-
-        public static string GetCoreString(string stringName, params object[] parameters)
-        {
-            var strings = typeof(DbContext).GetTypeInfo().Assembly.GetType(typeof(DbContext).Namespace + ".Strings").GetTypeInfo();
-            var method = parameters.Length == 0
-                ? strings.GetDeclaredProperty(stringName).GetGetMethod()
-                : strings.GetDeclaredMethods(stringName).Single();
-
-            return (string)method.Invoke(null, parameters);
         }
     }
 }

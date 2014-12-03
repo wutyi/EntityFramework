@@ -9,14 +9,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Data.Entity.ChangeTracking;
-using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
 using Microsoft.Data.Entity.Relational.Metadata;
-using Microsoft.Data.Entity.Relational.Model;
 using Microsoft.Data.Entity.Relational.Update;
+using Microsoft.Data.Entity.Tests;
 using Microsoft.Data.Entity.Update;
-using Microsoft.Framework.DependencyInjection;
-using Microsoft.Framework.DependencyInjection.Fallback;
 using Microsoft.Framework.Logging;
 using Moq;
 using Moq.Protected;
@@ -505,10 +502,10 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             dbParameterCollectionMock
                 .Setup(m => m.Add(It.IsAny<object>()))
                 .Returns<object>(p =>
-                    {
-                        parameters.Add(p);
-                        return parameters.Count - 1;
-                    });
+                {
+                    parameters.Add(p);
+                    return parameters.Count - 1;
+                });
             dbParameterCollectionMock
                 .Protected()
                 .Setup<DbParameter>("GetParameter", ItExpr.IsAny<int>())
@@ -547,10 +544,10 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             mockDataReader
                 .Setup(r => r.ReadAsync(It.IsAny<CancellationToken>()))
                 .Returns(() =>
-                    {
-                        currentRow = rowIndex < results.Count ? results[rowIndex++] : null;
-                        return Task.FromResult(currentRow != null);
-                    });
+                {
+                    currentRow = rowIndex < results.Count ? results[rowIndex++] : null;
+                    return Task.FromResult(currentRow != null);
+                });
 
             return mockDataReader;
         }
@@ -579,27 +576,14 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             return model;
         }
 
-        private static DbContextConfiguration CreateConfiguration(IModel model)
-        {
-            var serviceCollection = new ServiceCollection();
-            serviceCollection.AddEntityFramework().AddInMemoryStore();
-            return new DbContext(serviceCollection.BuildServiceProvider(),
-                new DbContextOptions()
-                    .UseInMemoryStore(false)
-                    .UseModel(model))
-                .Configuration;
-        }
-
         private static StateEntry CreateStateEntry(
             EntityState entityState,
             bool generateKeyValues = false,
             bool computeNonKeyValue = false)
         {
             var model = BuildModel(generateKeyValues, computeNonKeyValue);
-            var stateEntry = CreateConfiguration(model).Services.StateEntryFactory.Create(
-                model.GetEntityType(typeof(T1).FullName), new T1 { Id = 1, Name = "Test" });
-            stateEntry.EntityState = entityState;
-            return stateEntry;
+
+            return TestHelpers.CreateStateEntry(model, entityState, new T1 { Id = 1, Name = "Test" });
         }
 
         private class ModificationCommandBatchFake : ReaderModificationCommandBatch

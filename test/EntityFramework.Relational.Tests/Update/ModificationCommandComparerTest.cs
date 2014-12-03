@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using Microsoft.Data.Entity.ChangeTracking;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Relational.Update;
 using Microsoft.Framework.DependencyInjection;
 using Xunit;
@@ -13,32 +14,37 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         [Fact]
         public void Compare_returns_0_only_for_commands_that_are_equal()
         {
-            var mCC = new ModificationCommandComparer();
+            var model = new Entity.Metadata.Model();
+            var entityType = model.AddEntityType(typeof(object));
 
-            var configuration = new DbContext(new DbContextOptions().UseInMemoryStore(persist: false)).Configuration;
-            var factory = configuration.ScopedServiceProvider.GetRequiredService<StateEntryFactory>();
+            var contextServices = ((IDbContextServices)new DbContext(
+                new DbContextOptions()
+                .UseModel(model)
+                .UseInMemoryStore(persist: false))).ScopedServiceProvider;
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
-            var entityType = new Entity.Metadata.Model().AddEntityType(typeof(object));
             var key = entityType.GetOrAddProperty("Id", typeof(int), shadowProperty: true);
             entityType.GetOrSetPrimaryKey(key);
 
-            var stateEntry1 = factory.Create(entityType, new object());
+            var stateEntry1 = stateManager.GetOrCreateEntry(new object());
             stateEntry1[key] = 0;
             stateEntry1.EntityState = EntityState.Added;
             var modificationCommandAdded = new ModificationCommand(new SchemaQualifiedName("A"), new ParameterNameGenerator(), p => p.Relational());
             modificationCommandAdded.AddStateEntry(stateEntry1);
 
-            var stateEntry2 = factory.Create(entityType, new object());
+            var stateEntry2 = stateManager.GetOrCreateEntry(new object());
             stateEntry2[key] = 1;
             stateEntry2.EntityState = EntityState.Modified;
             var modificationCommandModified = new ModificationCommand(new SchemaQualifiedName("A"), new ParameterNameGenerator(), p => p.Relational());
             modificationCommandModified.AddStateEntry(stateEntry2);
 
-            var stateEntry3 = factory.Create(entityType, new object());
+            var stateEntry3 = stateManager.GetOrCreateEntry(new object());
             stateEntry3[key] = 2;
             stateEntry3.EntityState = EntityState.Deleted;
             var modificationCommandDeleted = new ModificationCommand(new SchemaQualifiedName("A"), new ParameterNameGenerator(), p => p.Relational());
             modificationCommandDeleted.AddStateEntry(stateEntry3);
+
+            var mCC = new ModificationCommandComparer();
 
             Assert.True(0 == mCC.Compare(modificationCommandAdded, modificationCommandAdded));
             Assert.True(0 == mCC.Compare(null, null));

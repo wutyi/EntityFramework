@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Utilities;
 
 namespace Microsoft.Data.Entity.Metadata.Internal
@@ -72,6 +75,11 @@ namespace Microsoft.Data.Entity.Metadata.Internal
                     return false;
                 }
 
+                if (ignoredConfigurationSource == ConfigurationSource.Explicit)
+                {
+                    throw new InvalidOperationException(Strings.EntityIgnoredExplicitly(name));
+                }
+
                 _ignoredEntityTypeNames.Value.Remove(name);
             }
 
@@ -81,7 +89,7 @@ namespace Microsoft.Data.Entity.Metadata.Internal
         private InternalEntityBuilder EntityTypeAdded(EntityType entityType, bool isNew)
         {
             var builder = new InternalEntityBuilder(entityType, ModelBuilder);
-            if (isNew 
+            if (isNew
                 && _modelChangeListener != null)
             {
                 _modelChangeListener.OnEntityTypeAdded(builder);
@@ -90,7 +98,14 @@ namespace Microsoft.Data.Entity.Metadata.Internal
             return builder;
         }
 
-        public virtual bool IgnoreEntity([NotNull] string name, ConfigurationSource configurationSource)
+        public virtual bool Ignore([NotNull] Type type, ConfigurationSource configurationSource)
+        {
+            Check.NotNull(type, "type");
+
+            return Ignore(type.FullName, configurationSource);
+        }
+
+        public virtual bool Ignore([NotNull] string name, ConfigurationSource configurationSource)
         {
             Check.NotEmpty(name, "name");
 
@@ -107,12 +122,12 @@ namespace Microsoft.Data.Entity.Metadata.Internal
             var entityType = Metadata.TryGetEntityType(name);
             if (entityType != null)
             {
-                if (!_entityBuilders.Remove(entityType, configurationSource))
+                if (!Remove(entityType, configurationSource))
                 {
                     return false;
                 }
 
-                Metadata.RemoveEntityType(entityType);
+                RemoveUnreachableEntityTypes(configurationSource);
             }
 
             _ignoredEntityTypeNames.Value[name] = configurationSource;
@@ -120,11 +135,54 @@ namespace Microsoft.Data.Entity.Metadata.Internal
             return true;
         }
 
-        public virtual bool IgnoreEntity([NotNull] Type type, ConfigurationSource configurationSource)
+        private bool Remove(EntityType entityType, ConfigurationSource configurationSource)
         {
-            Check.NotNull(type, "type");
+            if (!_entityBuilders.Remove(entityType, configurationSource, canOverrideSameSource: false))
+            {
+                if (configurationSource == ConfigurationSource.Explicit)
+                {
+                    throw new InvalidOperationException(Strings.EntityAddedExplicitly(entityType.Name));
+                }
 
-            return IgnoreEntity(type.FullName, configurationSource);
+                return false;
+            }
+
+            foreach (var foreignKey in Metadata.GetReferencingForeignKeys(entityType).ToList())
+            {
+                var removed = RemoveForeignKey(foreignKey, configurationSource);
+
+                Debug.Assert(removed);
+            }
+
+            Metadata.RemoveEntityType(entityType);
+
+            return true;
+        }
+
+        private void RemoveUnreachableEntityTypes(ConfigurationSource configurationSource)
+        {
+            var roots = new List<EntityType>();
+            // ReSharper disable once LoopCanBeConvertedToQuery
+            foreach (var entityType in Metadata.EntityTypes)
+            {
+                var currentConfigurationSource = _entityBuilders.GetConfigurationSource(entityType);
+                if (currentConfigurationSource.Overrides(configurationSource))
+                {
+                    roots.Add(entityType);
+                }
+            }
+
+            foreach (var orphan in new ModelUndirectedGraphAdapter(Metadata).GetUnreachableVertices(roots))
+            {
+                Remove(orphan, configurationSource);
+            }
+        }
+
+        private bool RemoveForeignKey(ForeignKey foreignKey, ConfigurationSource configurationSource)
+        {
+            var entityBuilder = Entity(foreignKey.EntityType.Type, ConfigurationSource.Convention);
+
+            return entityBuilder.RemoveForeignKey(foreignKey, configurationSource);
         }
     }
 }

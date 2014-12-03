@@ -2,8 +2,7 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using Microsoft.Data.Entity.Migrations.Model;
-using Microsoft.Data.Entity.Relational.Model;
-using Microsoft.Data.Entity.Utilities;
+using Microsoft.Data.Entity.Relational;
 using Moq;
 using Xunit;
 
@@ -14,7 +13,7 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Model
         [Fact]
         public void Create_and_initialize_operation()
         {
-            var column = new Column("Foo", "int");
+            var column = new Column("Foo", typeof(int));
             var addColumnOperation = new AddColumnOperation("dbo.MyTable", column);
 
             Assert.Equal("dbo.MyTable", addColumnOperation.TableName);
@@ -25,9 +24,9 @@ namespace Microsoft.Data.Entity.Migrations.Tests.Model
         [Fact]
         public void Dispatches_visitor()
         {
-            var addColumnOperation = new AddColumnOperation("dbo.MyTable", new Column("Foo", "int"));
-            var mockVisitor = new Mock<MigrationOperationSqlGenerator>(new RelationalTypeMapper());
-            var builder = new Mock<IndentedStringBuilder>();
+            var addColumnOperation = new AddColumnOperation("dbo.MyTable", new Column("Foo", typeof(int)));
+            var mockVisitor = MigrationsTestHelpers.MockSqlGenerator();
+            var builder = new Mock<SqlBatchBuilder>();
             addColumnOperation.GenerateSql(mockVisitor.Object, builder.Object);
 
             mockVisitor.Verify(g => g.Generate(addColumnOperation, builder.Object), Times.Once());

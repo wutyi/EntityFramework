@@ -147,6 +147,25 @@ namespace Microsoft.Data.Entity.Metadata
             return this;
         }
 
+        public virtual void Ignore<T>()
+        {
+            Ignore(typeof(T));
+        }
+
+        public virtual void Ignore([NotNull] Type entityType)
+        {
+            Check.NotNull(entityType, "entityType");
+
+            Builder.Ignore(entityType, ConfigurationSource.Explicit);
+        }
+
+        public virtual void Ignore([NotNull] string name)
+        {
+            Check.NotEmpty(name, "name");
+
+            Builder.Ignore(name, ConfigurationSource.Explicit);
+        }
+
         public class EntityBuilder : IEntityBuilder<EntityBuilder>
         {
             private readonly InternalEntityBuilder _builder;
@@ -190,26 +209,26 @@ namespace Microsoft.Data.Entity.Metadata
                 return new KeyBuilder(Builder.Key(propertyNames, ConfigurationSource.Explicit));
             }
 
-            public virtual PropertyBuilder Property<TProperty>([NotNull] string name)
+            public virtual PropertyBuilder Property<TProperty>([NotNull] string propertyName)
             {
-                Check.NotEmpty(name, "name");
+                Check.NotEmpty(propertyName, "propertyName");
 
-                return Property(typeof(TProperty), name);
+                return Property(typeof(TProperty), propertyName);
             }
 
-            public virtual PropertyBuilder Property([NotNull] Type propertyType, [NotNull] string name)
+            public virtual PropertyBuilder Property([NotNull] Type propertyType, [NotNull] string propertyName)
             {
                 Check.NotNull(propertyType, "propertyType");
-                Check.NotEmpty(name, "name");
+                Check.NotEmpty(propertyName, "propertyName");
 
-                return new PropertyBuilder(Builder.Property(propertyType, name, ConfigurationSource.Explicit));
+                return new PropertyBuilder(Builder.Property(propertyType, propertyName, ConfigurationSource.Explicit));
             }
 
-            public virtual bool Ignore([NotNull] string name)
+            public virtual void Ignore([NotNull] string propertyName)
             {
-                Check.NotEmpty(name, "name");
+                Check.NotEmpty(propertyName, "propertyName");
 
-                return Builder.Ignore(name, ConfigurationSource.Explicit);
+                Builder.Ignore(propertyName, ConfigurationSource.Explicit);
             }
 
             public virtual ForeignKeyBuilder ForeignKey([NotNull] string referencedEntityTypeName, [NotNull] params string[] propertyNames)
@@ -752,14 +771,16 @@ namespace Microsoft.Data.Entity.Metadata
             {
                 Check.NotNull(propertyExpression, "propertyExpression");
 
-                return new PropertyBuilder(Builder.Property(propertyExpression.GetPropertyAccess(), ConfigurationSource.Explicit));
+                var propertyInfo = propertyExpression.GetPropertyAccess();
+                return new PropertyBuilder(Builder.Property(propertyInfo, ConfigurationSource.Explicit));
             }
 
-            public virtual bool Ignore([NotNull] Expression<Func<TEntity, object>> propertyExpression)
+            public virtual void Ignore([NotNull] Expression<Func<TEntity, object>> propertyExpression)
             {
                 Check.NotNull(propertyExpression, "propertyExpression");
 
-                return Builder.Ignore(propertyExpression.GetPropertyAccess().Name, ConfigurationSource.Explicit);
+                var propertyName = propertyExpression.GetPropertyAccess().Name;
+                Builder.Ignore(propertyName, ConfigurationSource.Explicit);
             }
 
             public virtual ForeignKeyBuilder ForeignKey<TReferencedEntityType>([NotNull] Expression<Func<TEntity, object>> foreignKeyExpression)

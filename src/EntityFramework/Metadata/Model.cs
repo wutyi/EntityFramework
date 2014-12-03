@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Internal;
 using Microsoft.Data.Entity.Utilities;
 
 namespace Microsoft.Data.Entity.Metadata
@@ -107,6 +108,11 @@ namespace Microsoft.Data.Entity.Metadata
         {
             Check.NotNull(entityType, "entityType");
 
+            if (GetReferencingForeignKeys(entityType).Any())
+            {
+                throw new InvalidOperationException(Strings.EntityTypeInUse(entityType.Name));
+            }
+
             var previousEntities = _entities;
             _entities = _entities.Remove(entityType);
 
@@ -124,19 +130,21 @@ namespace Microsoft.Data.Entity.Metadata
             get { return _entities; }
         }
 
-        public virtual IEnumerable<IForeignKey> GetReferencingForeignKeys(IEntityType entityType)
+        public virtual IEnumerable<ForeignKey> GetReferencingForeignKeys([NotNull] IEntityType entityType)
         {
             Check.NotNull(entityType, "entityType");
 
             // TODO: Perf: Add additional indexes so that this isn't a linear lookup
+            // Issue #1179
             return EntityTypes.SelectMany(et => et.ForeignKeys).Where(fk => fk.ReferencedEntityType == entityType);
         }
 
-        public virtual IEnumerable<IForeignKey> GetReferencingForeignKeys(IProperty property)
+        public virtual IEnumerable<ForeignKey> GetReferencingForeignKeys([NotNull] IProperty property)
         {
             Check.NotNull(property, "property");
 
             // TODO: Perf: Add additional indexes so that this isn't a linear lookup
+            // Issue #1179
             return EntityTypes.SelectMany(e => e.ForeignKeys.Where(f => f.ReferencedProperties.Contains(property))).ToArray();
         }
 
@@ -165,6 +173,16 @@ namespace Microsoft.Data.Entity.Metadata
         IReadOnlyList<IEntityType> IModel.EntityTypes
         {
             get { return EntityTypes; }
+        }
+
+        IEnumerable<IForeignKey> IModel.GetReferencingForeignKeys(IEntityType entityType)
+        {
+            return GetReferencingForeignKeys(entityType);
+        }
+
+        IEnumerable<IForeignKey> IModel.GetReferencingForeignKeys(IProperty property)
+        {
+            return GetReferencingForeignKeys(property);
         }
     }
 }

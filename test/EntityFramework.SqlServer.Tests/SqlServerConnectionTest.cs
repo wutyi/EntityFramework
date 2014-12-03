@@ -3,7 +3,6 @@
 
 using System.Data.SqlClient;
 using Microsoft.Data.Entity.Infrastructure;
-using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.Logging;
 using Xunit;
 
@@ -32,9 +31,9 @@ namespace Microsoft.Data.Entity.SqlServer.Tests
             }
         }
 
-        public static LazyRef<IDbContextOptions> CreateOptions()
+        public static DbContextService<IDbContextOptions> CreateOptions()
         {
-            return new LazyRef<IDbContextOptions>(() => new DbContextOptions()
+            return new DbContextService<IDbContextOptions>(() => new DbContextOptions()
                 .UseSqlServer(@"Server=(localdb)\v11.0;Database=SqlServerConnectionTest;Trusted_Connection=True;"));
         }
     }

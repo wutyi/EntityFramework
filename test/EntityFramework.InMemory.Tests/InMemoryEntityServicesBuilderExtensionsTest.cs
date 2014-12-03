@@ -2,7 +2,9 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System.Linq;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Storage;
+using Microsoft.Data.Entity.Tests;
 using Microsoft.Framework.DependencyInjection;
 using Microsoft.Framework.DependencyInjection.Fallback;
 using Xunit;
@@ -24,17 +26,30 @@ namespace Microsoft.Data.Entity.InMemory.Tests
         [Fact]
         public void Services_wire_up_correctly()
         {
-            var services = new ServiceCollection();
+            using (var context = TestHelpers.CreateContext())
+            {
+                var scopedProvider = ((IDbContextServices)context).ScopedServiceProvider;
+
+                Assert.NotNull(scopedProvider.GetRequiredService<InMemoryDataStore>());
+                Assert.NotNull(scopedProvider.GetRequiredService<DataStoreSource>());
+            }
+        }
+
+        [Fact]
+        public void AddInMemoryStore_does_not_replace_services_already_registered()
+        {
+            var services = new ServiceCollection()
+                .AddSingleton<InMemoryDataStore, FakeInMemoryDataStore>();
+
             services.AddEntityFramework().AddInMemoryStore();
+
             var serviceProvider = services.BuildServiceProvider();
 
-            using (var context = new DbContext(serviceProvider, new DbContextOptions()))
-            {
-                var scopedProvider = context.Configuration.Services.ServiceProvider;
+            Assert.IsType<FakeInMemoryDataStore>(serviceProvider.GetRequiredService<InMemoryDataStore>());
+        }
 
-                Assert.NotNull(scopedProvider.GetService<InMemoryDataStore>());
-                Assert.NotNull(scopedProvider.GetService<DataStoreSource>());
-            }
+        private class FakeInMemoryDataStore : InMemoryDataStore
+        {
         }
     }
 }

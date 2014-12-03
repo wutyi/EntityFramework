@@ -73,14 +73,22 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\Shared\MigrationsTestHelpers.cs">
+      <Link>MigrationsTestHelpers.cs</Link>
+    </Compile>
+    <Compile Include="..\Shared\RelationalTestHelpers.cs">
+      <Link>RelationalTestHelpers.cs</Link>
+    </Compile>
     <Compile Include="ApiConsistencyTest.cs" />
     <Compile Include="Infrastructure\ContextTypeAttributeTest.cs" />
     <Compile Include="Infrastructure\HistoryRepositoryTest.cs" />
     <Compile Include="Infrastructure\MigrationAssemblyTest.cs" />
     <Compile Include="Infrastructure\MigrationInfoTest.cs" />
     <Compile Include="Infrastructure\MigratorTest.cs" />
+    <Compile Include="MigrationOperationFactoryTest.cs" />
     <Compile Include="MigrationOperationSqlGeneratorTest.cs" />
     <Compile Include="MigrationsDatabaseExtensionsTest.cs" />
+    <Compile Include="MigrationsEntityServicesBuilderExtensionsTest.cs" />
     <Compile Include="MigrationTest.cs" />
     <Compile Include="ModelDifferTest.cs" />
     <Compile Include="Builders\ColumnBuilderTest.cs" />
@@ -90,6 +98,7 @@
     <Compile Include="Model\AddDefaultConstraintOperationTest.cs" />
     <Compile Include="Model\AddForeignKeyOperationTest.cs" />
     <Compile Include="Model\AddPrimaryKeyOperationTest.cs" />
+    <Compile Include="Model\ColumnTest.cs" />
     <Compile Include="Model\DropUniqueConstraintOperationTest.cs" />
     <Compile Include="Model\AlterColumnOperationTest.cs" />
     <Compile Include="Model\CopyDataOperationTest.cs" />
@@ -115,6 +124,9 @@
     <Compile Include="Model\RenameTableOperationTest.cs" />
     <Compile Include="..\Shared\ApiConsistencyTestBase.cs" />
     <Compile Include="Model\SqlOperationTest.cs" />
+    <Compile Include="..\Shared\TestHelpers.cs" />
+    <Compile Include="MigrationsDbContextOptionsExtensionsTest.cs" />
+    <Compile Include="TestHelperExtensions.cs" />
     <None Include="project.json" />
   </ItemGroup>
   <ItemGroup>

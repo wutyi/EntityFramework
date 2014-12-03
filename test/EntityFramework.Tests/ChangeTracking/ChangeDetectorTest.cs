@@ -3,7 +3,10 @@
 
 using System;
 using Microsoft.Data.Entity.ChangeTracking;
+using Microsoft.Data.Entity.Infrastructure;
 using Microsoft.Data.Entity.Metadata;
+using Microsoft.Data.Entity.Utilities;
+using Microsoft.Framework.DependencyInjection;
 using Moq;
 using Xunit;
 
@@ -14,9 +17,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Detects_principal_key_change()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("PrincipalId");
@@ -26,8 +30,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = 77;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -43,9 +46,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Reacts_to_principal_key_change_in_sidecar()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("PrincipalId");
@@ -55,8 +59,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = 77;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -72,9 +75,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Detects_primary_key_change()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("Id");
@@ -84,8 +88,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = -1;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -101,9 +104,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Reacts_to_primary_key_change_in_sidecar()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("Id");
@@ -113,8 +117,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = -1;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -130,9 +133,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Ignores_non_principal_key_change()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var property = entityType.GetProperty("Name");
@@ -142,8 +146,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[property] = "Blue";
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -160,9 +163,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Ignores_non_principal_key_change_in_sidecar()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var property = entityType.GetProperty("Name");
@@ -172,8 +176,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[property] = "Blue";
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -190,9 +193,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Ignores_no_change_to_principal_key()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("PrincipalId");
@@ -202,8 +206,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = 77;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -219,9 +222,10 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         [Fact]
         public void Ignores_no_change_to_principal_key_in_sidecar()
         {
+            var notifierMock = new Mock<StateEntryNotifier>();
             var model = BuildModel();
-            var configuration = TestHelpers.CreateContextConfiguration(model);
-            var stateManager = configuration.Services.StateManager;
+            var contextServices = CreateContextServices(notifierMock.Object, model);
+            var stateManager = contextServices.GetRequiredService<StateManager>();
 
             var entityType = model.GetEntityType(typeof(Category));
             var keyProperty = entityType.GetProperty("PrincipalId");
@@ -231,8 +235,7 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             principalEntry.RelationshipsSnapshot[keyProperty] = 77;
             principalEntry.EntityState = EntityState.Added;
 
-            var notifierMock = new Mock<StateEntryNotifier>();
-            var changeDetector = new ChangeDetector(configuration, notifierMock.Object);
+            var changeDetector = new ChangeDetector(new DbContextService<IModel>(model));
 
             Assert.Same(principalEntry, stateManager.TryGetEntry(new SimpleEntityKey<int>(entityType, -1)));
 
@@ -274,6 +277,11 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
             productType.GetOrAddForeignKey(productType.GetProperty("DependentId"), new Key(new[] { categoryType.GetProperty("PrincipalId") }));
 
             return model;
+        }
+
+        private static IServiceProvider CreateContextServices(StateEntryNotifier notifier, IModel model)
+        {
+            return TestHelpers.CreateContextServices(new ServiceCollection().AddInstance(notifier), model);
         }
     }
 }
