@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using JetBrains.Annotations;
 using Microsoft.Data.Entity.Relational.Migrations.Infrastructure;
+using Microsoft.Data.Entity.Relational.Design.ReverseEngineering;
 using Microsoft.Data.Entity.Utilities;
 using Microsoft.Framework.Logging;
 
@@ -17,7 +18,8 @@ namespace Microsoft.Data.Entity.Commands.Utilities
         private static string[] _includedNames = new[]
         {
             typeof(MigrationTool).FullName,
-            typeof(Migrator).FullName
+            typeof(Migrator).FullName,
+            typeof(ReverseEngineeringGenerator).FullName
         };
 
         private readonly string _name;
