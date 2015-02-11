@@ -139,7 +139,18 @@ namespace Microsoft.Data.Entity.Tests.ChangeTracking
         }
 
         [Fact]
-        public void Can_get_property_entry_by_lambda()
+        public void Can_get_generic_property_entry_by_name()
+        {
+            using (var context = new FreezerContext())
+            {
+                var entity = context.Add(new Chunky()).Entity;
+
+                Assert.Equal("Monkey", context.Entry(entity).Property<int>("Monkey").Name);
+            }
+        }
+
+        [Fact]
+        public void Can_get__generic_property_entry_by_lambda()
         {
             using (var context = new FreezerContext())
             {

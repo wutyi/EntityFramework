@@ -11,5 +11,19 @@ namespace Microsoft.Data.Entity.ChangeTracking
             : base(stateEntry, name)
         {
         }
+
+        public virtual new TProperty CurrentValue
+        {
+            get { return (TProperty)base.CurrentValue; }
+            [param: CanBeNull]
+            set { base.CurrentValue = value; }
+        }
+
+        public virtual new TProperty OriginalValue
+        {
+            get { return (TProperty)base.OriginalValue; }
+            [param: CanBeNull]
+            set { base.OriginalValue = value; }
+        }
     }
 }
