@@ -362,6 +362,28 @@ namespace Microsoft.Data.Entity.Tests.Metadata.ModelConventions
         }
 
         [Fact]
+        public void Does_not_match_dependent_PK_for_self_ref()
+        {
+            var relationshipBuilder = DependentType.Relationship(
+                PrincipalType,
+                PrincipalType,
+                null,
+                null,
+                null,
+                null,
+                ConfigurationSource.Convention,
+                isUnique: true);
+
+            Assert.Same(relationshipBuilder, new ForeignKeyPropertyDiscoveryConvention().Apply(relationshipBuilder));
+
+            var fk = (IForeignKey)relationshipBuilder.Metadata;
+            Assert.Same(fk, PrincipalType.Metadata.ForeignKeys.Single());
+            Assert.Equal(PrincipalType.Metadata.SimpleName + PrimaryKey.Name, fk.Properties.Single().Name);
+            Assert.True(fk.IsUnique);
+            Assert.False(fk.IsRequired);
+        }
+
+        [Fact]
         public void Matches_composite_dependent_PK_for_unique_FK()
         {
             var fkProperty1 = DependentTypeWithCompositeKey.Metadata.GetPrimaryKey().Properties[0];
@@ -620,6 +642,7 @@ namespace Microsoft.Data.Entity.Tests.Metadata.ModelConventions
         {
             public int PeeKay { get; set; }
             public IEnumerable<DependentEntity> InverseNav { get; set; }
+            public PrincipalEntity SelfRef { get; set; }
         }
 
         private class DependentEntity
