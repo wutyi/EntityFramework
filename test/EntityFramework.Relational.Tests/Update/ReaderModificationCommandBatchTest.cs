@@ -26,7 +26,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         [Fact]
         public void AddCommand_adds_command_if_possible()
         {
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
 
             var batch = new ModificationCommandBatchFake();
             batch.AddCommand(command);
@@ -43,7 +43,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         [Fact]
         public void AddCommand_does_not_add_command_if_not_possible()
         {
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
 
             var batch = new ModificationCommandBatchFake();
             batch.AddCommand(command);
@@ -59,7 +59,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         [Fact]
         public void AddCommand_does_not_add_command_if_resulting_sql_is_invalid()
         {
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
 
             var batch = new ModificationCommandBatchFake();
             batch.AddCommand(command);
@@ -77,7 +77,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         {
             var stateEntry = CreateStateEntry(EntityState.Added);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var sqlGeneratorMock = new Mock<SqlGenerator>();
@@ -95,7 +95,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         {
             var stateEntry = CreateStateEntry(EntityState.Modified, generateKeyValues: true);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var sqlGeneratorMock = new Mock<SqlGenerator>();
@@ -113,7 +113,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         {
             var stateEntry = CreateStateEntry(EntityState.Deleted);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var sqlGeneratorMock = new Mock<SqlGenerator>();
@@ -131,12 +131,18 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         {
             var stateEntry = CreateStateEntry(EntityState.Added);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var fakeSqlGenerator = new FakeSqlGenerator();
             fakeSqlGenerator.AppendInsertOperationCallback = (sb, c) =>
-                sb.Append(c.SchemaQualifiedName.ToString());
+                {
+                    if (!string.IsNullOrEmpty(c.SchemaName))
+                    {
+                        sb.Append(c.EscapedSchemaName + ".");
+                    }
+                    sb.Append(c.EscapedTableName);
+                };
             var batch = new ModificationCommandBatchFake(fakeSqlGenerator);
             batch.AddCommand(command);
             batch.AddCommand(command);
@@ -167,7 +173,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
                 base.AppendBatchHeader(commandStringBuilder);
             }
 
-            public override void AppendSelectAffectedCountCommand(StringBuilder commandStringBuilder, SchemaQualifiedName schemaQualifiedName)
+            public override void AppendSelectAffectedCountCommand(StringBuilder commandStringBuilder, string tableName, string schemaName)
             {
             }
 
@@ -184,7 +190,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         public async Task ExecuteAsync_executes_batch_commands_and_consumes_reader()
         {
             var stateEntry = CreateStateEntry(EntityState.Added);
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var mockReader = CreateDataReaderMock();
@@ -203,7 +209,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             var stateEntry = CreateStateEntry(EntityState.Added, generateKeyValues: true);
             stateEntry.MarkAsTemporary(stateEntry.EntityType.GetPrimaryKey().Properties[0]);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var batch = new ModificationCommandBatchFake(CreateDataReaderMock(new[] { "Col1" }, new List<object[]> { new object[] { 42 } }).Object);
@@ -222,7 +228,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
                 EntityState.Added, generateKeyValues: true, computeNonKeyValue: true);
             stateEntry.MarkAsTemporary(stateEntry.EntityType.GetPrimaryKey().Properties[0]);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var batch = new ModificationCommandBatchFake(CreateDataReaderMock(new[] { "Col1", "Col2" }, new List<object[]> { new object[] { 42, "FortyTwo" } }).Object);
@@ -240,7 +246,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             var stateEntry = CreateStateEntry(
                 EntityState.Modified, generateKeyValues: true, computeNonKeyValue: true);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var batch = new ModificationCommandBatchFake(CreateDataReaderMock(new[] { "Col2" }, new List<object[]> { new object[] { "FortyTwo" } }).Object);
@@ -258,7 +264,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             var stateEntry = CreateStateEntry(EntityState.Added, generateKeyValues: true);
             stateEntry.MarkAsTemporary(stateEntry.EntityType.GetPrimaryKey().Properties[0]);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var mockReader = CreateDataReaderMock(new[] { "Col1" }, new List<object[]>
@@ -279,7 +285,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
         {
             var stateEntry = CreateStateEntry(EntityState.Added);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var batch = new ModificationCommandBatchFake(CreateDataReaderMock(new[] { "Col1" }, new List<object[]> { new object[] { 42 } }).Object);
@@ -300,7 +306,7 @@ namespace Microsoft.Data.Entity.Relational.Tests.Update
             var stateEntry = CreateStateEntry(EntityState.Added, generateKeyValues: true);
             stateEntry.MarkAsTemporary(stateEntry.EntityType.GetPrimaryKey().Properties[0]);
 
-            var command = new ModificationCommand(new SchemaQualifiedName("T1"), new ParameterNameGenerator(), p => p.Relational());
+            var command = new ModificationCommand("T1", null, new ParameterNameGenerator(), p => p.Relational());
             command.AddStateEntry(stateEntry);
 
             var batch = new ModificationCommandBatchFake(CreateDataReaderMock(new[] { "Col1" }, new List<object[]>()).Object);

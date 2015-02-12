@@ -32,20 +32,24 @@ namespace Microsoft.Data.Entity.Relational.Update
         }
 
         public ModificationCommand(
-            SchemaQualifiedName schemaQualifiedName,
+            [NotNull] string tableName,
+            [CanBeNull] string schemaName,
             [NotNull] ParameterNameGenerator parameterNameGenerator,
             [NotNull] Func<IProperty, IRelationalPropertyExtensions> getPropertyExtensions)
         {
-            Check.NotEmpty(schemaQualifiedName, "schemaQualifiedName");
+            Check.NotEmpty(tableName, "tableName");
             Check.NotNull(parameterNameGenerator, "parameterNameGenerator");
             Check.NotNull(getPropertyExtensions, "getPropertyExtensions");
 
-            SchemaQualifiedName = schemaQualifiedName;
+            TableName = tableName;
+            SchemaName = schemaName;
             ParameterNameGenerator = parameterNameGenerator;
             _getPropertyExtensions = getPropertyExtensions;
         }
 
-        public virtual SchemaQualifiedName SchemaQualifiedName { get; }
+        public virtual string TableName { get; }
+
+        public virtual string SchemaName { get; }
 
         public virtual IReadOnlyList<StateEntry> StateEntries => _stateEntries;
 
@@ -146,6 +150,16 @@ namespace Microsoft.Data.Entity.Relational.Update
             {
                 columnOperations[i].Value = reader.IsNull(i) ? null : reader.ReadValue<object>(i);
             }
+        }
+
+        public virtual string EscapedTableName => Escape(TableName);
+        public virtual string EscapedSchemaName => Escape(SchemaName);
+
+        private static string Escape(string name)
+        {
+            return name.IndexOfAny(new[] { ']', '[', '.' }) != -1
+                ? "[" + name.Replace("]", "]]") + "]"
+                : name;
         }
     }
 }
