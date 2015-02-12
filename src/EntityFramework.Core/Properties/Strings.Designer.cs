@@ -141,6 +141,15 @@ namespace Microsoft.Data.Entity.Internal
         }
 
         /// <summary>
+        /// The edge cannot be added because the graph does not contain vertex '{vertex}'.
+        /// </summary>
+        public static string GraphDoesNotContainVertex([CanBeNull] object vertex)
+        {
+            return string.Format(CultureInfo.CurrentCulture, GetString("GraphDoesNotContainVertex", "vertex"), vertex);
+        }
+
+
+        /// <summary>
         /// The properties provided for the argument '{argumentName}' are declared on different entity types.
         /// </summary>
         public static string InconsistentEntityType([CanBeNull] object argumentName)

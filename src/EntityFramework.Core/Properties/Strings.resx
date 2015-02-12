@@ -429,4 +429,7 @@
   <data name="UnhandledExpressionType" xml:space="preserve">
     <value>Unhandled expression type: '{type}'.</value>
   </data>
+  <data name="GraphDoesNotContainVertex" xml:space="preserve">
+    <value>The edge cannot be added because the graph does not contain vertex '{vertex}'.</value>
+  </data>
 </root>

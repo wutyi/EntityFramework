@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using JetBrains.Annotations;
+using Microsoft.Data.Entity.Internal;
 
 namespace Microsoft.Data.Entity.Utilities
 {
@@ -11,19 +10,28 @@ namespace Microsoft.Data.Entity.Utilities
     {
         private readonly HashSet<TVertex> _verticies = new HashSet<TVertex>();
         private readonly HashSet<TEdge> _edges = new HashSet<TEdge>();
-        private readonly Dictionary<TVertex, HashSet<TVertex>> _successorMap = new Dictionary<TVertex, HashSet<TVertex>>();
+        private readonly Dictionary<TVertex, Dictionary<TVertex, List<TEdge>>> _successorMap = new Dictionary<TVertex, Dictionary<TVertex, List<TEdge>>>();
 
         public IEnumerable<TEdge> Edges
         {
             get { return _edges; }
         }
 
-        public virtual IEnumerable<TEdge> GetIncomingEdges([NotNull] TVertex to)
+        public virtual IEnumerable<TEdge> GetEdges([NotNull] TVertex from, [NotNull] TVertex to)
         {
-            throw new NotImplementedException();
+            Dictionary<TVertex, List<TEdge>> successorSet;
+            if (_successorMap.TryGetValue(from, out successorSet))
+            {
+                List<TEdge> edgeList;
+                if (successorSet.TryGetValue(to, out edgeList))
+                {
+                    return edgeList;
+                }
+            }
+            return Enumerable.Empty<TEdge>();
         }
 
-        public virtual IEnumerable<TEdge> GetOutgoingEdges([NotNull] TVertex from)
+        public virtual IEnumerable<TEdge> GetIncomingEdges([NotNull] TVertex to)
         {
             throw new NotImplementedException();
         }
@@ -42,17 +50,48 @@ namespace Microsoft.Data.Entity.Utilities
             _verticies.UnionWith(verticies);
         }
 
-        public virtual void AddEdge(TVertex from, TVertex to, TEdge edge)
+        public virtual void AddEdge([NotNull] TVertex from, [NotNull] TVertex to, [NotNull] TEdge edge)
         {
-            HashSet<TVertex> successors;
-            if (!_successorMap.TryGetValue(from, out successors))
-            {
-                successors = new HashSet<TVertex>();
-                _successorMap.Add(from, successors);
-            }
-            successors.Add(to);
+            AddEdges(from, to, new[] { edge });
+        }
 
-            _edges.Add(edge);
+        public virtual void AddEdges([NotNull] TVertex from, [NotNull] TVertex to, [NotNull] IEnumerable<TEdge> edges)
+        {
+            Check.NotNull(from, nameof(from));
+            Check.NotNull(to, nameof(to));
+            Check.NotNull(edges, nameof(edges));
+
+            if (!_verticies.Contains(from))
+            {
+                throw new InvalidOperationException(Strings.GraphDoesNotContainVertex(from));
+            }
+
+            if (!_verticies.Contains(to))
+            {
+                throw new InvalidOperationException(Strings.GraphDoesNotContainVertex(to));
+            }
+
+            Dictionary<TVertex, List<TEdge>> successorSet;
+            if (!_successorMap.TryGetValue(from, out successorSet))
+            {
+                successorSet = new Dictionary<TVertex, List<TEdge>>();
+                _successorMap.Add(from, successorSet);
+            }
+
+            List<TEdge> edgeList;
+            if (!successorSet.TryGetValue(to, out edgeList))
+            {
+                edgeList = new List<TEdge>();
+                successorSet.Add(to, edgeList);
+            }
+
+            edgeList.AddRange(edges);
+            _edges.UnionWith(edges);
+        }
+
+        public IEnumerable<TVertex> TopologicalSort()
+        {
+            throw new NotImplementedException();
         }
 
         public override IEnumerable<TVertex> Vertices
@@ -62,17 +101,17 @@ namespace Microsoft.Data.Entity.Utilities
 
         public override IEnumerable<TVertex> GetOutgoingNeighbours([NotNull]TVertex from)
         {
-            HashSet<TVertex> successorSet;
+            Dictionary<TVertex, List<TEdge>> successorSet;
             if (_successorMap.TryGetValue(from, out successorSet))
             {
-                return successorSet;
+                return successorSet.Keys;
             }
             return Enumerable.Empty<TVertex>();
         }
 
         public override IEnumerable<TVertex> GetIncomingNeighbours([NotNull]TVertex to)
         {
-            return _successorMap.Where(kvp => kvp.Value.Contains(to)).Select(kvp => kvp.Key);
+            return _successorMap.Where(kvp => kvp.Value.ContainsKey(to)).Select(kvp => kvp.Key);
         }
     }
 }
